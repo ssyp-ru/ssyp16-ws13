@@ -8,7 +8,7 @@ var init_commit: Common.Commit;
 var second_commit: Common.Commit;
 
 describe("Common", function () {
-    describe("class Repo", function () {
+    describe("repo functions", function () {
         before(() => {
             test_repo = new Common.Repo("~/ws13/test/test-repo", true);
             test_repo.stage("~/ws13/test/test_repo/test.test");
@@ -32,7 +32,7 @@ describe("Common", function () {
             });
         });
     });
-    describe("Commit", function () {
+    describe("commit functions", function () {
         describe("after staging", () => {
             before(() => {
                 init_commit = test_repo.createCommit(null, "test message init",
@@ -50,7 +50,7 @@ describe("Common", function () {
                     "test author inittest_init@test.com");
             });
         });
-        describe("After second commit", () => {
+        describe("after second commit", () => {
             before(() => {
                 second_commit = test_repo.createCommit(init_commit, "test message",
                     "test author", "test@test.com");
