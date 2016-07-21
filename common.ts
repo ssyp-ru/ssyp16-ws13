@@ -4,6 +4,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 var parents = require('parents');
+var colors = require('colors/safe');
+var logSymbols = require('log-symbols');
 /**
  * Commit class representation
  */
@@ -111,33 +113,66 @@ export class Tag extends Ref {
  * Repository class representation
  */
 export class Repo {
+    private _root: string;
+    private valid: boolean = false;
+    private _defaultBranchName: string;
+    private _currentBranchName: string;
+    private _refs: Map<string, Ref>;
     /**
      * Constructor that allows Repo creation if needed
      * @param path Path to the repo itself
      * @param init allow creation of new repo or not
      * @param quiet silence warnings and notices
      */
-    constructor(path: string, init: boolean = false, quiet: boolean = false) { throw "Not Implemented"; }
+    constructor(rootPath: string, init: boolean = false, quiet: boolean = false) {
+        this._root = rootPath;
+        var jerkPath = path.join(rootPath, '.jerk');
+        var stat: fs.Stats;
+        try {
+            stat = fs.statSync(jerkPath);
+        } catch (e) { }
+        this.valid = true;
+        if (!stat || !stat.isDirectory()) {
+            this.valid = false;
+            if (!init) {
+                console.error(colors.dim('JERK'), logSymbols.error, "is not a repository!");
+                return;
+            }
+            fs.mkdirSync(jerkPath, 0o755);
+            var fd = fs.openSync(path.join(jerkPath, 'config'), 'w', 0o755);
+            fs.writeSync(fd, "config");
+            fs.closeSync(fd);
+            if (!quiet) console.log(colors.dim('JERK'), logSymbols.success, "repository created successfully!");
+        }
+    }
     /**
      * Default for this repo branch name. Checks branch name for existance.
      * @param name (optional) - if present, it sets default branch name to given value, returning old value.
      */
-    get defaultBranchName(): string { throw "Not Implemented"; }
-    set defaultBranchName(name: string) { throw "Not Implemented"; }
+    get defaultBranchName(): string { return this._defaultBranchName; }
+    set defaultBranchName(name: string) {
+        var branch = this.ref<Branch>(name);
+        if (!branch) throw "Branch not found";
+        this._defaultBranchName = name;
+    }
     /**
      * Get default for this repo branch.
      */
-    get defaultBranch(): Branch { throw "Not Implemented"; }
+    get defaultBranch(): Branch { return this.ref<Branch>(this._defaultBranchName); }
     /**
      * Get or set current branch name. Checks branch name for existance.
      * @param name (optional) - if present, it sets current branch name to given value, returning old value.
      */
-    get currentBranchName(): string { throw "Not Implemented"; }
-    set currentBranchName(name: string) { throw "Not Implemented"; }
+    get currentBranchName(): string { return this._currentBranchName; }
+    set currentBranchName(name: string) {
+        var branch = this.ref<Branch>(name);
+        if (!branch) throw "Branch not found";
+        this._currentBranchName = name;
+    }
     /**
      * Get current branch.
      */
-    get currentBranch(): Branch { throw "Not Implemented"; }
+    get currentBranch(): Branch { return this.ref<Branch>(this._defaultBranchName); }
     /**
      * Get commit by its ID
      */
@@ -149,11 +184,13 @@ export class Repo {
     /**
      * Find Ref by its name
      */
-    ref<T extends Ref>(name: string): T { throw "Not Implemented"; }
+    ref<T extends Ref>(name: string): T {
+        return this._refs.get(name) as T;
+    }
     /**
      * List all refs of this repository
      */
-    refs<T extends Ref>(): T[] { throw "Not Implemented"; }
+    refs<T extends Ref>(): T[] { return [].concat(this._refs); }
     /**
      * Staged file paths to commit
      */
@@ -168,6 +205,14 @@ export class Repo {
     set index(paths: string[]) { throw "Not Implemented"; }
     addToIndex(path: string) { throw "Not Implemented"; }
     rmFromIndex(path: string) { throw "Not Implemented"; }
+    /**
+     * Get absolute path of the root of this repo.
+     */
+    get root() { return this._root; }
+    /**
+     * Get repository name based on repo path
+     */
+    get name() { return this._root.split(path.sep).pop(); }
     /**
      * Move all staged files to commit and create new commit instance.
      * @param previous the commit to base on or null if it is first commit in bare branch or repo
@@ -196,7 +241,12 @@ export function cwdRepo(): Repo {
     let cwd = process.cwd();
     var res: Repo;
     function tryRepoDir(dir: string) {
-        var stats = fs.statSync(path.join(dir, '.jerk'));
+        var stats: fs.Stats;
+        try {
+            stats = fs.statSync(path.join(dir, '.jerk'));
+        } catch (e) {
+            return;
+        }
         if (!!stats) {
             res = new Repo(dir);
         }
