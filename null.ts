@@ -1,20 +1,7 @@
 /**
  * CLI Function implementation
  */
-import * as fs from "fs";
 import * as Common from "./common";
-export function init(path: string, quiet: boolean = false)
-{ 
-    fs.stat(path, (err, stats) => {
-        if (!!err || !stats) {
-            fs.mkdirSync(path);
-        }
-        var repo = new Common.Repo(path, true, quiet);
-        if (!repo && !quiet) {
-            console.log("Repository initialization failed!")
-        }
-    });
-}
 export function add(dryRun: boolean = false,
     verbose: boolean = false, force: boolean = false, ignoreErrors = false,
     ...paths: string[])
