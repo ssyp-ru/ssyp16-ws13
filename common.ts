@@ -47,8 +47,8 @@ export class Commit {
  * Ref names are rejected if:
  * 
  * - it has double dots "..", or
- * - it has ASCII control character, "~", "^", ":" or SP, anywhere, or
- * - it ends with a "/".
+ * - it has ASCII control character, "^", ":" or SP, anywhere, or
+ * - it has a "/".
  * - it ends with ".lock"
  * - it contains a "\" (backslash)
  * 
@@ -64,42 +64,66 @@ export class Commit {
  * so if one tag is named "v1.0", no branch or other tags can be named alike.
  */
 export class Ref {
+    private _head: string;
+    private _name: string;
+    private _ts: number;
+    private _callbacks: Function[];
+    constructor(head: string, name: string, ts: number = new Date().getTime()) {
+        this._head = head;
+        this._name = name;
+        this._ts = ts;
+        this._callbacks = [];
+    }
     /**
      * HEAD Commit ID (last commit in this ref)
      */
-    get head(): string { throw "Not Implemented"; }
+    get head(): string { return this._head; }
     /**
-     * Branch name
+     * Ref name
      */
-    get name(): string { throw "Not Implemented"; }
+    get name(): string { return this._name; }
     /**
      * Move HEAD of this ref to different commit. Triggers *move* event.
      */
-    move(id: string) { throw "Not Implemented"; }
+    move(id: string) {
+        var old = this._head;
+        this._head = id;
+        this.trigger('move', [old, id]);
+    }
     /**
      * Trigger an event on this reference.
      */
-    trigger(event: string, data: Object) { throw "Not Implemented"; }
+    trigger(event: string, ...data: any[]) {
+        this._callbacks.forEach(cb => {
+            cb.apply(this, [event].concat(data));
+        });
+    }
     /**
      * Register callback on any change
      * move - HEAD moved
      * remove - Ref is now under the destroy process
      */
-    on(callback: Function) { throw "Not Implemented"; }
+    on(callback: Function) { this._callbacks.push(callback); }
     /**
      * UNIX timestamp of the time the ref was created
      */
-    get time(): number { throw "Not Implemented"; }
+    get time(): number { return this._ts; }
+    static validRefName(name: string): boolean {
+        if (name.includes('..')) return false;
+        if (name.includes('^')) return false;
+        if (name.includes(':')) return false;
+        if (name.includes(';')) return false;
+        if (name.includes('/')) return false;
+        if (name.includes('\\')) return false;
+        if (name.endsWith('.lock')) return false;
+        return true;
+    }
 }
+
 /**
  * Branch class representation
  */
 export class Branch extends Ref {
-    /**
-     * Root commit ID (first commit in this branch, when it was created).
-     * When branch is created it points to the first commit **AFTER** branch split that lead to branch creation.
-     */
-    root(): string { throw "Not Implemented"; }
 }
 
 /**
@@ -126,6 +150,7 @@ export class Repo {
      */
     constructor(rootPath: string, init: boolean = false, quiet: boolean = false) {
         this._root = rootPath;
+        this._refs = new Map<string, Ref>();
         var jerkPath = path.join(rootPath, '.jerk');
         var stat: fs.Stats;
         try {
@@ -139,11 +164,21 @@ export class Repo {
                 return;
             }
             fs.mkdirSync(jerkPath, 0o755);
-            var fd = fs.openSync(path.join(jerkPath, 'config'), 'w', 0o755);
-            fs.writeSync(fd, "config");
+            var fd = fs.openSync(path.join(jerkPath, 'config'), 'w', 0o655);
+            fs.writeSync(fd, "[config]");
             fs.closeSync(fd);
+            fd = fs.openSync(path.join(jerkPath, 'workingtree'), 'w', 0o655);
+            fs.writeSync(fd, "branch = master");
+            fs.closeSync(fd);
+            this.createBranch('master', null);
+            this._defaultBranchName = 'master';
+            this._currentBranchName = 'master';
             if (!quiet) console.log(colors.dim('JERK'), logSymbols.success, "repository created successfully!");
+            return;
         }
+        this.createBranch('master', null);
+        this._defaultBranchName = 'master';
+        this._currentBranchName = 'master';
     }
     /**
      * Default for this repo branch name. Checks branch name for existance.
@@ -222,15 +257,38 @@ export class Repo {
     /**
      * Create new Ref from string
      */
-    createRef(ref: string): Ref { throw "Not Implemented"; }
+    createRef(ref: string): Ref {
+        if (!Ref.validRefName(ref)) throw "Invalid ref name";
+        var complex: boolean = ref.includes('~');
+        throw "Not Implemented";
+    }
     /**
      * Create new Branch from string
      */
-    createBranch(branchName: string): Branch { throw "Not Implemented"; }
+    createBranch(branchName: string, commit?: string): Branch {
+        if (!Ref.validRefName(branchName)) throw "Invalid ref name";
+        if (branchName.includes('~')) {
+            throw "Invalid branch name";
+        }
+        if (commit === undefined) {
+            commit = this.currentBranch.head;
+        }
+        var branch = new Branch(commit, branchName);
+        this._refs.set(branchName, branch);
+        return branch;
+    }
     /**
      * Create new Tag from string
      */
-    createTag(tagName: string): Tag { throw "Not Implemented"; }
+    createTag(tagName: string): Tag {
+        if (!Ref.validRefName(tagName)) throw "Invalid ref name";
+        if (tagName.includes('~')) {
+            throw "Invalid tag name";
+        }
+        var tag = new Tag(this.currentBranch.head, tagName);
+        this._refs.set(tagName, tag);
+        return tag;
+    }
     /**
      * Fetch remote repo metadata and create remote repo implementation class matching it
      * @param url remote URL
