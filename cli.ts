@@ -1,4 +1,5 @@
 var program = require('commander');
+var colors = require('colors/safe');
 import * as child_process from "child_process";
 //import * as commander from 'commander';
 module CLI {
@@ -7,7 +8,7 @@ module CLI {
     }
 }
 program
-    .version("dev build");
+    .version(colors.rainbow("dev") + " build");
 program
     .command("init")
     .description("Initialize new repo in current working directory")

@@ -6,3 +6,5 @@
 !.vscode/tasks.json
 
 *.log
+!node_modules/**/*.js
+!node_modules/**/*.js.map
