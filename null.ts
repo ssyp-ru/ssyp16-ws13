@@ -18,7 +18,9 @@ export function init(path: string, quiet: boolean = false)
 export function add(dryRun: boolean = false,
     verbose: boolean = false, force: boolean = false, ignoreErrors = false,
     ...paths: string[])
-{ throw "Not Implemented"; }
+{
+    
+}
 export function rm(dryRun: boolean = false, cached: boolean = false,
     force: boolean = false, quiet: boolean = false,
     ...paths: string[])
