@@ -6,9 +6,8 @@ module Server {
         input: process.stdin,
         output: process.stdout,
     });
-    // rl.setPrompt("JERK => ");
 
-    rl.setPrompt("");
+    rl.setPrompt("JERK => ");
 
     var rsyncDaemon: child_process.ChildProcess;
 
@@ -24,24 +23,16 @@ module Server {
         fs.appendFileSync('rsyncd.conf', 'use chroot = no\n\n[git]\n\tpath = ' + process.cwd());
     }
     export function startRSYNCDaemon() {
-        rsyncDaemon = child_process.spawn('strace',
-            ['rsync', '--daemon', '-v', '--no-detach', '--port=19246', '--config=rsyncd.conf']);
-        rsyncDaemon.stdout.on('data', d => console.log(d.toString()));
-        rsyncDaemon.stderr.on('data', d => console.error(d.toString()));
-
-        rsyncDaemon.on('close', (code) => {
-        console.log(`child process exited with code ${code}`);
-        });
-
-
-            // (err, stdout, stderr) => {
-            //     console.log(stdout);
-            //     console.error(stderr);
-            //     if (err) {
-            //         console.error(err);
-            //         return;
-            //     }
-            // });
+        var out = fs.openSync('./out.log', 'a');
+        var err = fs.openSync('./err.log', 'a');
+        console.log("starting...");
+        rsyncDaemon = child_process.spawn('rsync',
+            ['--daemon', '-v', '--port=19246', '--config=rsyncd.conf'],
+            {
+                detached: true,
+                stdio: ['ignore', out, err]
+            });
+        rsyncDaemon.unref();
     }
 
     export function loopRSYNCDaemon() {
@@ -72,5 +63,3 @@ console.log("Starting JERK server...");
 Server.createRSYNCConfigIfNeeded();
 Server.startRSYNCDaemon();
 Server.loopRSYNCDaemon();
-
-// subprocess.call(shlex.split('rsync --daemon -v --no-detach --port=19246 --config=rsyncd.conf'))
