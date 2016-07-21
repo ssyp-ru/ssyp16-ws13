@@ -76,9 +76,12 @@ describe("Common", function () {
         });
     });
     describe("ref functions", () => {
+        before(() => {
+            test_repo.createRef("Test_ref");
+            ref.move(second_commit.id);
+        });
         it("compares second_commit ID and branch ref.head", () => {
             assert.equal(ref.head, second_commit.id, "wrong head");
         });
     });
 });
-
