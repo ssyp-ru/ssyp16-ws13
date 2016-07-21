@@ -1,7 +1,8 @@
 /**
  * Common code for client and server
  */
-
+import * as fs from 'fs';
+import * as path from 'path';
 /**
  * Commit class representation
  */
@@ -189,4 +190,24 @@ export class Repo {
      * @param url remote URL
      */
     createRemoteRepo(url: string): Repo { throw "Not Implemented"; }
+}
+export function cwdRepo(): Repo {
+    let cwd = process.cwd();
+    var res: Repo;
+    function tryRepoDir(dir) {
+        var stats = fs.statSync(path.join(dir, '.jerk'));
+        if (!!stats) {
+            res = new Repo(dir);
+        }
+    }
+    var p = cwd.split(path.sep);
+    for (var i = 0; i < p.length; i++) {
+        var dir = path.sep + p.join(path.sep);
+        tryRepoDir(dir);
+        p.pop();
+        if (!!res) {
+            return res;
+        }
+    }
+    return null;
 }

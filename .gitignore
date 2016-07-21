@@ -1,7 +1,6 @@
 *.js
 *.js.map
 
-node_modules/
 .vscode/
 !.vscode/launch.json
 !.vscode/tasks.json

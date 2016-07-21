@@ -1,11 +1,15 @@
 {
   "name": "jerk",
   "version": "1.0.0",
-  "description": "",
+  "description": "jerk VCS",
+  "repository": "git+ssh://ws13@10.0.0.1/git/ws13.git",
+  "private": true,
   "main": "client.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "SSYP",
-  "license": "SSYP"
+  "dependencies": {
+    "commander": ">= 2.9.0"
+  }
 }
