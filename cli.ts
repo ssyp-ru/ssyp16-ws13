@@ -1,6 +1,12 @@
 var program = require('commander');
 var colors = require('colors/safe');
 import * as child_process from "child_process";
+var logSymbols = require('log-symbols');
+
+console.log(logSymbols.success, 'finished successfully!');
+console.log(logSymbols.info, 'there is a trap here!');
+console.log(logSymbols.warning, 'done, with warnings!');
+console.log(logSymbols.error, 'operation failed!');
 //import * as commander from 'commander';
 module CLI {
     function main(params: string[]) {
