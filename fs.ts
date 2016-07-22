@@ -115,11 +115,40 @@ module FileSystem {
          */
         symlinkPath(): string;
     }
+    class DummyFileServerImpl implements IFileSystem {
+        /**
+         * Resolve IFileSystemObject by its hash.
+         * returns null if IFileSystemObject is not found.
+         */
+        resolveObjectByHash(hash: string): IFileSystemObject { console.log(hash); return null; }
+        /**
+         * Resolve IFileSystemObject by contents.
+         * Returns null if IFileSystemObject is not found.
+         */
+        resolveObjectByContents(contents: Buffer): IFileSystemObject { console.log(contents.length); return null; }
+        /**
+         * List all entries in the File System. 
+         * They are not related to any commits.
+         */
+        entries(): IFileSystemObject[] { console.log('entries'); return null; }
+        /**
+         * Create new file object. Returns null if operation fails for some reason.
+         */
+        create(blob?: Buffer): FileObject { console.log('create'); return null; }
+        /**
+         * Create symlink. Returns null if operation fails for some reason.
+         */
+        symlink(path: string): SymlinkObject { console.log('symlink'); return null; }
+        /**
+         * Try to remove IFileSystemObject. Returns true on success.
+         */
+        remove(id: string): boolean { console.log('remove'); return false; }
+    }
     /**
      * Returns current file system implementation.
      * It is possible that multiple instances of IFileSystem can exist at the same time.
      * But it is not recommended for obvious implementation reasons.
      */
-    export function fs(): IFileSystem { throw "Not Implemented"; }
+    export function fs(): IFileSystem { return new DummyFileServerImpl(); }
 }
 export = FileSystem;

@@ -297,7 +297,7 @@ export class Repo {
             config.commits[v.key] = v.value.data();
         });
         var json = JSON.stringify(config);
-        console.log(json);
+        // console.log(json);
         nfs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o655 });
     }
     private _loadConfig() {
@@ -343,7 +343,7 @@ export class Repo {
         });
         this._index = config.index;
         this._staged = config.staged;
-        console.log(this);
+        // console.log(this);
     }
     /**
      * Default for this repo branch name. Checks branch name for existance.

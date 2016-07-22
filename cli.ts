@@ -54,7 +54,7 @@ program
         }
         var mod = 'not modified';
         console.log(colors.dim('JERK'), logSymbols.info,
-            colors.blue(repo.name), '>', colors.orange(repo.currentBranchName), '>', colors.bold(mod));
+            colors.blue(repo.name), '>', colors.yellow(repo.currentBranchName), '>', colors.bold(mod));
     });
 program.parse(process.argv);
 if (!process.argv.slice(2).length) {
