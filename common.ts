@@ -14,6 +14,16 @@ abstract class Serializable {
         return JSON.stringify(this.data());
     }
 }
+export class TreeFile {
+    path: string;
+    time: number;
+    hash: string;
+    constructor(path: string, time?: number, hash?: string) {
+        this.path = path;
+        this.time = time;
+        this.hash = hash;
+    }
+}
 /**
  * Commit class representation
  */
@@ -24,13 +34,13 @@ export class Commit extends Serializable {
     private _authorEMail: string;
     private _parentId: string;
     private _time: number;
-    private _contents: StringMap<string>;
+    private _contents: StringMap<TreeFile>;
     private _mergeOf: string;
     private _changed: string[];
     private _repo: Repo;
     constructor(id: string, repo: Repo, parentId: string = null,
         message: string = null, authorName: string = null, authorEMail: string = null,
-        time: number = new Date().getTime(), contents: StringMap<string> = new StringMap<string>(),
+        time: number = new Date().getTime(), contents: StringMap<TreeFile> = new StringMap<TreeFile>(),
         mergeOf: string = null, changed: string[] = []) {
         super();
         this._id = id;
@@ -59,19 +69,19 @@ export class Commit extends Serializable {
      * [ { path: "/test.txt", hash: "1241aea1bd502fa41" }, 
      *   { path: "/sub/test2.txt", hash: "ada6d7c434effa807" } ]
      */
-    get contents(): { path: string; hash: string }[] {
-        var res: { path: string; hash: string }[] = [];
+    get contents(): TreeFile[] {
+        var res: TreeFile[] = [];
         this._contents.iter().forEach(v => {
             var path = v.key;
-            var hash = v.value;
-            res.push({ path: path, hash: hash });
+            var file = v.value;
+            res.push(file);
         });
         return res;
     }
     /**
-     * Returns hash of the object represented by given path
+     * Returns TreeFile of the object represented by given path
      */
-    file(path: string): string { return this._contents.get(path); }
+    file(path: string): TreeFile { return this._contents.get(path); }
     /** 
      * Branch merged, or null if none merged by this commit
      */
@@ -335,7 +345,11 @@ export class Repo {
             //["Commit", this._id, this._message, this._authorName, this._authorEMail,
             //this._parentId, this._time.toString(), JSON.stringify(this._contents),
             //this._mergeOf, JSON.stringify(this._changed)]
-            var contents = new StringMap<string>(JSON.parse(data[7]));
+            var contents = new StringMap<TreeFile>();
+            iterateStringKeyObject(JSON.parse(data[7])).forEach(v => {
+                var path: string = v.value['path'];
+                contents.put(path, new TreeFile(path, v.value['time'], v.value['hash']));
+            });
             var commit = new Commit(data[1], this,
                 data[5], data[2], data[3], data[4], parseInt(data[6]), contents,
                 data[8], JSON.parse(data[9]));
@@ -427,11 +441,12 @@ export class Repo {
         authorName: string = null, authorEMail: string = null, mergeOf: string = null): Commit {
         var ts: number = new Date().getTime();
         var hash: string = createHash('sha256').update(message || ts, 'utf-8').digest('hex');
-        var contents = new StringMap<string>();
+        var contents = new StringMap<TreeFile>();
         if (!!previous) {
             contents.copyFrom(previous['_contents']);
         }
         this._staged.forEach(v => {
+            var stats = nfs.statSync(v);
             var buf = nfs.readFileSync(v);
             var fo: fs.FileObject;
             var foFound = this._fs.resolveObjectByContents(buf);
@@ -443,7 +458,7 @@ export class Repo {
             } else {
                 fo = foFound.asFile();
             }
-            contents.put(v, fo.hash());
+            contents.put(v, new TreeFile(v, stats.ctime.getTime(), fo.hash()));
         });
         var commit = new Commit(hash, this, !!previous ? previous.id : null,
             message, authorName, authorEMail, ts, contents, mergeOf, this.staged);
