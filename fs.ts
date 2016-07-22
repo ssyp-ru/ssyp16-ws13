@@ -1,3 +1,7 @@
+import * as nfs from 'fs';
+import * as path from 'path';
+var createHash = require('sha.js');
+
 module FileSystem {
     /**
      * Represents file system.
@@ -25,7 +29,7 @@ module FileSystem {
         /**
          * Create new file object. Returns null if operation fails for some reason.
          */
-        create(blob?: Buffer): FileObject;
+        create(blob: Buffer): FileObject;
         /**
          * Create symlink. Returns null if operation fails for some reason.
          */
@@ -40,10 +44,6 @@ module FileSystem {
      * It is possible that a file/symlink represented by this object does not exist.
      */
     export interface IFileSystemObject {
-        /**
-         * Get name of this IFileSystemObject, like "test.jpg" or "dirname".
-         */
-        name(): string;
         /**
          * Returns object content hash.
          */
@@ -115,11 +115,114 @@ module FileSystem {
          */
         symlinkPath(): string;
     }
+
+    class FObject implements FileObject {
+        private _hash: string;
+        constructor(hash: string) {
+            this._hash = hash;
+        }
+        buffer(): Buffer {
+            return nfs.readFileSync(this.fullPath());
+        }
+        size(): number {
+            return this.buffer().length;
+        }
+        hash(): string {
+            return this._hash;
+        }
+        fullPath(): string {
+            return '.jerk/' + this._hash;
+        }
+        isFile(): boolean {
+            return true;
+        }
+        isSymlink(): boolean {
+            return false;
+        }
+        asFile(): FileObject {
+            return this;
+        }
+        asSymlink(): SymlinkObject {
+            return null;
+        }
+    }
+
+    class SObject implements SymlinkObject {
+        private _hash: string;
+        constructor(hash: string) {
+            this._hash = hash;
+        }
+        symlinkPath(): string {
+            return nfs.readFileSync(this.fullPath(), 'utf-8');
+        }
+        hash(): string {
+            return this._hash;
+        }
+        fullPath(): string {
+            return '.jerk/' + this._hash + '.symlink';
+        }
+        isFile(): boolean {
+            return false;
+        }
+        isSymlink(): boolean {
+            return true;
+        }
+        asFile(): FileObject {
+            return null;
+        }
+        asSymlink(): SymlinkObject {
+            return this;
+        }
+    }
+    class FSImplementation implements IFileSystem {
+        resolveObjectByHash(hash: string): IFileSystemObject {
+            return this.resolveHash(hash);
+        }
+        resolveObjectByContents(contents: Buffer): IFileSystemObject {
+            return this.resolveHash(createHash('sha256').update(contents).digest('hex'));
+        }
+        entries(): IFileSystemObject[] {
+            return nfs.readdirSync('.jerk').filter(v => v.length > 60).map(v => this.resolveHash(v));
+        }
+        create(blob: Buffer): FileObject {
+            var hash = createHash('sha256').update(blob).digest('hex');
+            nfs.writeFileSync('.jerk/' + hash, blob, { mode: 0o655 });
+            return new FObject(hash);
+        }
+        symlink(path: string): SymlinkObject {
+            var hash = createHash('sha256').update(path, 'utf-8').digest('hex');
+            nfs.writeFileSync('.jerk/' + hash, path, { encoding: 'utf-8', mode: 0o655 });
+            return new SObject(hash);
+        }
+        remove(id: string): boolean {
+            var o = this.resolveHash(id);
+            try {
+                nfs.unlinkSync(o.fullPath());
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+        private resolveHash(hash: string): IFileSystemObject {
+            try {
+                var stat = nfs.statSync('.jerk/' + hash)
+                return new FObject(hash);
+            } catch (e) {
+                try {
+                    var lstat = nfs.lstatSync('.jerk/' + hash + '.symlink');
+                    return new SObject(hash);
+                } catch (e1) {
+                    return null;
+                }
+            }
+
+        }
+    }
     /**
      * Returns current file system implementation.
      * It is possible that multiple instances of IFileSystem can exist at the same time.
      * But it is not recommended for obvious implementation reasons.
      */
-    export function fs(): IFileSystem { throw "Not Implemented"; }
+    export function fs(): IFileSystem { return new FSImplementation(); }
 }
 export = FileSystem;
