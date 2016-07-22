@@ -6,7 +6,7 @@ import * as assert from 'assert';
 var test_repo: Common.Repo;
 var init_commit: Common.Commit;
 var second_commit: Common.Commit;
-
+var ref: Common.Ref;
 describe("Common", function () {
     describe("repo functions", function () {
         before(() => {
@@ -75,5 +75,13 @@ describe("Common", function () {
             });
         });
     });
+    describe("ref functions", () => {
+        before(() => {
+            test_repo.createRef("Test_ref");
+            ref.move(second_commit.id);
+        });
+        it("compares second_commit ID and branch ref.head", () => {
+            assert.equal(ref.head, second_commit.id, "wrong head");
+        });
+    });
 });
-
