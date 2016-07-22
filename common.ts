@@ -1,12 +1,14 @@
 /**
  * Common code for client and server
  */
+/// <reference path="log-symbols.d.ts" />
+/// <reference path="colors.d.ts" />
 import * as nfs from 'fs';
 import * as path from 'path';
 import fs = require('./fs');
+import * as logSymbols from 'log-symbols';
+import * as colors from 'colors/safe';
 var parents = require('parents');
-var colors = require('colors/safe');
-var logSymbols = require('log-symbols');
 var createHash = require('sha.js');
 abstract class Serializable {
     abstract data(): string[];

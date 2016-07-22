@@ -40,6 +40,11 @@ declare module "colors" {
     export function magentaBG(str: string): string;
     export function cyanBG(str: string): string;
     export function whiteBG(str: string): string;
+
+    export function america(str: string): string;
+    export function zebra(str: string): string;
+    export function rainbow(str: string): string;
+    export function random(str: string): string;
 }
 declare module "colors/safe" {
     export var supportsColor: boolean;
@@ -83,4 +88,9 @@ declare module "colors/safe" {
     export function magentaBG(str: string): string;
     export function cyanBG(str: string): string;
     export function whiteBG(str: string): string;
+
+    export function america(str: string): string;
+    export function zebra(str: string): string;
+    export function rainbow(str: string): string;
+    export function random(str: string): string;
 }

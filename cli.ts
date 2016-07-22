@@ -1,12 +1,13 @@
 #!/usr/bin/node
 /// <reference path="log-symbols.d.ts" />
-var colors = require('colors/safe');
-var program = require('commander');
+/// <reference path="colors.d.ts" />
+import * as logSymbols from 'log-symbols';
+import * as colors from 'colors/safe';
 import * as child_process from "child_process";
-var logSymbols = require('log-symbols');
 import * as fs from "fs";
 import * as path from 'path';
 import * as Common from './common';
+var program = require('commander');
 
 module CLI {
     export function init(path: string, quiet: boolean = false) {
@@ -54,7 +55,8 @@ program
         }
         var mod = 'not modified';
         console.log(colors.dim('JERK'), logSymbols.info,
-            colors.blue(repo.name), '>', colors.yellow(repo.currentBranchName), '>', colors.bold(mod));
+            colors.blue(repo.name), '>', colors.yellow(repo.currentBranchName),
+            '>', colors.bold(mod));
     });
 program.parse(process.argv);
 if (!process.argv.slice(2).length) {
