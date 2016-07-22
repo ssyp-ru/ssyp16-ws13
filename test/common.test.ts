@@ -66,11 +66,11 @@ describe("Common", function () {
                 assert.ok((UNIX.getTime() > second_commit.time), "wrong UNIX timestamp");
             });
             it("checks path of file returned by \"contents\" function", function () {
-                assert.equal(init_commit.contents()[0].path, "~/ws13/test/test_repo/test.test",
+                assert.equal(init_commit.contents[0].path, "~/ws13/test/test_repo/test.test",
                     "wrong path");
             });
             it("checks path of file returned by \"file\" function", function () {
-                assert.equal(init_commit.contents()[0].path, "~/ws13/test/test_repo/test.test",
+                assert.equal(init_commit.contents[0].path, "~/ws13/test/test_repo/test.test",
                     "wrong path");
             });
         });
