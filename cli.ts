@@ -1,13 +1,14 @@
 #!/usr/bin/node
 /// <reference path="log-symbols.d.ts" />
 /// <reference path="colors.d.ts" />
+/// <reference path="commander.d.ts" />
 import * as logSymbols from 'log-symbols';
 import * as colors from 'colors/safe';
 import * as child_process from "child_process";
 import * as fs from "fs";
 import * as path from 'path';
 import * as Common from './common';
-var program = require('commander');
+import program = require('commander');
 
 module CLI {
     export function init(path: string, quiet: boolean = false) {
@@ -57,6 +58,12 @@ program
         console.log(colors.dim('JERK'), logSymbols.info,
             colors.blue(repo.name), '>', colors.yellow(repo.currentBranchName),
             '>', colors.bold(mod));
+    });
+program
+    .command('add <urls>')
+    .description('Stage files to be commited in the nearest future.')
+    .action((urls) => {
+        console.log(urls);
     });
 program.parse(process.argv);
 if (!process.argv.slice(2).length) {
