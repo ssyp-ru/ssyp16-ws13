@@ -64,9 +64,9 @@ export class Commit {
  * so if one tag is named "v1.0", no branch or other tags can be named alike.
  */
 export class Ref {
-    private _head: string;
-    private _name: string;
-    private _ts: number;
+    protected _head: string;
+    protected _name: string;
+    protected _ts: number;
     private _callbacks: Function[];
     constructor(head: string, name: string, ts: number = new Date().getTime()) {
         this._head = head;
@@ -118,67 +118,129 @@ export class Ref {
         if (name.endsWith('.lock')) return false;
         return true;
     }
+    data(): string[] {
+        return ["Ref", this._name, this._head, this._ts.toString()];
+    }
 }
 
 /**
  * Branch class representation
  */
 export class Branch extends Ref {
+    data(): string[] {
+        var val: string[] = super.data();
+        val[0] = "Branch";
+        return val;
+    }
 }
 
 /**
  * Tag class representation
  */
 export class Tag extends Ref {
-
+    move(id: string) {
+        throw "Tags are not moveable!"
+    }
+    data(): string[] {
+        var val: string[] = super.data();
+        val[0] = "Tag";
+        return val;
+    }
 }
-
+class StringMap<T> {
+    data: Object;
+    constructor() {
+        this.data = {};
+    }
+    put(key: string, val: T): T {
+        var old = this.data[key];
+        this.data[key] = val;
+        return old;
+    }
+    get(key: string): T {
+        return this.data[key];
+    }
+    iter(): { key: string, value: T }[] {
+        var res = [];
+        for (var it in this.data) {
+            if (this.data.hasOwnProperty(it)) {
+                res.push({ key: it, value: this.data[it] });
+            }
+        }
+        return res;
+    }
+}
 /**
  * Repository class representation
  */
 export class Repo {
     private _root: string;
-    private valid: boolean = false;
     private _defaultBranchName: string;
     private _currentBranchName: string;
-    private _refs: Map<string, Ref>;
+    private _refs: StringMap<Ref>;
     /**
      * Constructor that allows Repo creation if needed
-     * @param path Path to the repo itself
+     * @param rootPath Path to the repo itself
      * @param init allow creation of new repo or not
      * @param quiet silence warnings and notices
      */
     constructor(rootPath: string, init: boolean = false, quiet: boolean = false) {
         this._root = rootPath;
-        this._refs = new Map<string, Ref>();
+        this._refs = new StringMap<Ref>();
         var jerkPath = path.join(rootPath, '.jerk');
         var stat: fs.Stats;
         try {
             stat = fs.statSync(jerkPath);
         } catch (e) { }
-        this.valid = true;
         if (!stat || !stat.isDirectory()) {
-            this.valid = false;
             if (!init) {
-                console.error(colors.dim('JERK'), logSymbols.error, "is not a repository!");
-                return;
+                throw (colors.dim('JERK') + ' ' + logSymbols.error + " is not a repository!");
             }
             fs.mkdirSync(jerkPath, 0o755);
-            var fd = fs.openSync(path.join(jerkPath, 'config'), 'w', 0o655);
-            fs.writeSync(fd, "[config]");
-            fs.closeSync(fd);
-            fd = fs.openSync(path.join(jerkPath, 'workingtree'), 'w', 0o655);
-            fs.writeSync(fd, "branch = master");
-            fs.closeSync(fd);
             this.createBranch('master', null);
             this._defaultBranchName = 'master';
             this._currentBranchName = 'master';
+            this._saveConfig();
             if (!quiet) console.log(colors.dim('JERK'), logSymbols.success, "repository created successfully!");
             return;
         }
-        this.createBranch('master', null);
-        this._defaultBranchName = 'master';
-        this._currentBranchName = 'master';
+        this._loadConfig();
+    }
+    private _saveConfig() {
+        var jerkPath = path.join(this._root, '.jerk');
+        var config = {
+            defaultBranchName: this._defaultBranchName,
+            currentBranchName: this._currentBranchName,
+            refs: [],
+            refData: {}
+        };
+        this._refs.iter().forEach(v => {
+            config.refs.push(v.key);
+            config.refData[v.key] = v.value.data();
+        });
+        var json = JSON.stringify(config);
+        console.log(json);
+        fs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o655 });
+    }
+    private _loadConfig() {
+        var jerkPath = path.join(this._root, '.jerk');
+        var json: string = fs.readFileSync(path.join(jerkPath, 'config'), 'utf-8');
+        var config: { defaultBranchName: string, currentBranchName: string, refs: string[], refData: Object } = JSON.parse(json);
+        this._defaultBranchName = config.defaultBranchName;
+        this._currentBranchName = config.currentBranchName;
+        this._refs = new StringMap<Ref>();
+        config.refs.forEach(v => {
+            var data: string[] = config.refData[v];
+            var type = data[0];
+            if (type === "Ref") {
+                this._refs.put(v, new Ref(data[2], data[0], parseInt(data[3])));
+            } else if (type === "Branch") {
+                this._refs.put(v, new Branch(data[2], data[0], parseInt(data[3])));
+            } else if (type == "Tag") {
+                this._refs.put(v, new Tag(data[2], data[0], parseInt(data[3])));
+            }
+        })
+        console.log(this);
     }
     /**
      * Default for this repo branch name. Checks branch name for existance.
@@ -274,7 +336,7 @@ export class Repo {
             commit = this.currentBranch.head;
         }
         var branch = new Branch(commit, branchName);
-        this._refs.set(branchName, branch);
+        this._refs.put(branchName, branch);
         return branch;
     }
     /**
@@ -286,7 +348,7 @@ export class Repo {
             throw "Invalid tag name";
         }
         var tag = new Tag(this.currentBranch.head, tagName);
-        this._refs.set(tagName, tag);
+        this._refs.put(tagName, tag);
         return tag;
     }
     /**
