@@ -122,3 +122,4 @@ module FileSystem {
      */
     export function fs(): IFileSystem { throw "Not Implemented"; }
 }
+export = FileSystem;

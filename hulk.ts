@@ -1,3 +1,4 @@
+import fs = require('./fs');
 /**
  * Because we manage Hunks here.
  * From Oxford English Dictionary:
@@ -47,7 +48,7 @@ module Hulk {
          * @param past file in the past
          * @param present file now
          */
-        constructor(past: FileSystem.FileObject, present: FileSystem.FileObject) { throw "Not Implemented"; }
+        constructor(past: fs.FileObject, present: fs.FileObject) { throw "Not Implemented"; }
         /**
          * List all hunks inside this Diff
          */
@@ -81,3 +82,4 @@ module Hulk {
         get conflicted(): Hunk { throw "Not Implemented"; }
     }
 }
+export = Hulk;

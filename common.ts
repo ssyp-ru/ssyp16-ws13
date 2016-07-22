@@ -1,8 +1,9 @@
 /**
  * Common code for client and server
  */
-import * as fs from 'fs';
+import * as nfs from 'fs';
 import * as path from 'path';
+import fs = require('./fs');
 var parents = require('parents');
 var colors = require('colors/safe');
 var logSymbols = require('log-symbols');
@@ -245,7 +246,7 @@ export class Repo {
     private _commits: StringMap<Commit>;
     private _index: string[];
     private _staged: string[];
-    private _fs: FileSystem.IFileSystem;
+    private _fs: fs.IFileSystem;
     /**
      * Constructor that allows Repo creation if needed
      * @param rootPath Path to the repo itself
@@ -258,17 +259,17 @@ export class Repo {
         this._commits = new StringMap<Commit>();
         this._index = [];
         this._staged = [];
-        this._fs = FileSystem.fs();
+        this._fs = fs.fs();
         var jerkPath = path.join(rootPath, '.jerk');
-        var stat: fs.Stats;
+        var stat: nfs.Stats;
         try {
-            stat = fs.statSync(jerkPath);
+            stat = nfs.statSync(jerkPath);
         } catch (e) { }
         if (!stat || !stat.isDirectory()) {
             if (!init) {
                 throw (colors.dim('JERK') + ' ' + logSymbols.error + " is not a repository!");
             }
-            fs.mkdirSync(jerkPath, 0o755);
+            nfs.mkdirSync(jerkPath, 0o755);
             this.createBranch('master', null);
             this._defaultBranchName = 'master';
             this._currentBranchName = 'master';
@@ -296,11 +297,11 @@ export class Repo {
         });
         var json = JSON.stringify(config);
         console.log(json);
-        fs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o655 });
+        nfs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o655 });
     }
     private _loadConfig() {
         var jerkPath = path.join(this._root, '.jerk');
-        var json: string = fs.readFileSync(path.join(jerkPath, 'config'), 'utf-8');
+        var json: string = nfs.readFileSync(path.join(jerkPath, 'config'), 'utf-8');
         var config: {
             defaultBranchName: string,
             currentBranchName: string,
@@ -430,8 +431,8 @@ export class Repo {
             contents.copyFrom(previous['_contents']);
         }
         this._staged.forEach(v => {
-            var buf = fs.readFileSync(v);
-            var fo: FileSystem.FileObject;
+            var buf = nfs.readFileSync(v);
+            var fo: fs.FileObject;
             var foFound = this._fs.resolveObjectByContents(buf);
             if (!foFound) {
                 fo = this._fs.create(buf);
@@ -494,9 +495,9 @@ export function cwdRepo(): Repo {
     let cwd = process.cwd();
     var res: Repo;
     function tryRepoDir(dir: string) {
-        var stats: fs.Stats;
+        var stats: nfs.Stats;
         try {
-            stats = fs.statSync(path.join(dir, '.jerk'));
+            stats = nfs.statSync(path.join(dir, '.jerk'));
         } catch (e) {
             return;
         }
