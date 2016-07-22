@@ -13,10 +13,27 @@ module FileSystem {
          */
         resolveObjectByHash(hash: string): IFileSystemObject;
         /**
+         * Resolve IFileSystemObject by contents.
+         * Returns null if IFileSystemObject is not found.
+         */
+        resolveObjectByContents(contents: Buffer): IFileSystemObject;
+        /**
          * List all entries in the File System. 
          * They are not related to any commits.
          */
         entries(): IFileSystemObject[];
+        /**
+         * Create new file object. Returns null if operation fails for some reason.
+         */
+        create(blob?: Buffer): FileObject;
+        /**
+         * Create symlink. Returns null if operation fails for some reason.
+         */
+        symlink(path: string): SymlinkObject;
+        /**
+         * Try to remove IFileSystemObject. Returns true on success.
+         */
+        remove(id: string): boolean;
     }
     /**
      * Represents a single object in file tree.
@@ -98,19 +115,6 @@ module FileSystem {
          */
         symlinkPath(): string;
     }
-    /**
-     * Create new file object. Returns null if operation fails for some reason.
-     */
-    export function create(blob?: Buffer): FileObject { throw "Not Implemented"; }
-    /**
-     * Create symlink. Returns null if operation fails for some reason.
-     * Uses create function internally.
-     */
-    export function symlink(path: string): SymlinkObject { throw "Not Implemented"; }
-    /**
-     * Try to remove IFileSystemObject. Returns true on success.
-     */
-    export function remove(id: string): boolean { throw "Not Implemented"; }
     /**
      * Returns current file system implementation.
      * It is possible that multiple instances of IFileSystem can exist at the same time.

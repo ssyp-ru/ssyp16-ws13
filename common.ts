@@ -7,10 +7,16 @@ var parents = require('parents');
 var colors = require('colors/safe');
 var logSymbols = require('log-symbols');
 var createHash = require('sha.js');
+abstract class Serializable {
+    abstract data(): string[];
+    toString(): string {
+        return JSON.stringify(this.data());
+    }
+}
 /**
  * Commit class representation
  */
-export class Commit {
+export class Commit extends Serializable {
     private _id: string;
     private _message: string;
     private _authorName: string;
@@ -25,6 +31,7 @@ export class Commit {
         message: string = null, authorName: string = null, authorEMail: string = null,
         time: number = new Date().getTime(), contents: StringMap<string> = new StringMap<string>(),
         mergeOf: string = null, changed: string[] = []) {
+        super();
         this._id = id;
         this._repo = repo;
         this._message = message;
@@ -51,7 +58,7 @@ export class Commit {
      * [ { path: "/test.txt", hash: "1241aea1bd502fa41" }, 
      *   { path: "/sub/test2.txt", hash: "ada6d7c434effa807" } ]
      */
-    contents(): { path: string; hash: string }[] {
+    get contents(): { path: string; hash: string }[] {
         var res: { path: string; hash: string }[] = [];
         this._contents.iter().forEach(v => {
             var path = v.key;
@@ -77,6 +84,11 @@ export class Commit {
      */
     get changed(): string[] { return this._changed; }
     set changed(paths: string[]) { this._changed = paths; }
+    data(): string[] {
+        return ["Commit", this._id, this._message, this._authorName, this._authorEMail,
+            this._parentId, this._time.toString(), JSON.stringify(this._contents),
+            this._mergeOf, JSON.stringify(this._changed)];
+    }
 }
 
 /**
@@ -100,12 +112,13 @@ export class Commit {
  * Note, that branch and tag systems are very similar (both are refs and stored together),
  * so if one tag is named "v1.0", no branch or other tags can be named alike.
  */
-export class Ref {
+export class Ref extends Serializable {
     protected _head: string;
     protected _name: string;
     protected _ts: number;
     private _callbacks: Function[];
     constructor(head: string, name: string, ts: number = new Date().getTime()) {
+        super();
         this._head = head;
         this._name = name;
         this._ts = ts;
@@ -158,9 +171,6 @@ export class Ref {
     data(): string[] {
         return ["Ref", this._name, this._head, this._ts.toString()];
     }
-    toString(): string {
-        return JSON.stringify(this.data());
-    }
 }
 
 /**
@@ -187,27 +197,38 @@ export class Tag extends Ref {
         return val;
     }
 }
+function iterateStringKeyObject<T>(obj: Object): { key: string, value: T }[] {
+    var res = [];
+    for (var it in obj) {
+        if (obj.hasOwnProperty(it)) {
+            res.push({ key: it, value: obj[it] });
+        }
+    }
+    return res;
+}
+function iterateSerializable(obj: Object): { key: string, value: string[] }[] {
+    return iterateStringKeyObject<string[]>(obj);
+}
 class StringMap<T> {
     data: Object;
-    constructor() {
-        this.data = {};
+    constructor(data: Object = {}) {
+        this.data = data;
     }
     put(key: string, val: T): T {
         var old = this.data[key];
         this.data[key] = val;
         return old;
     }
+    copyFrom(o: StringMap<T>) {
+        o.iter().forEach(v => {
+            this.data[v.key] = v.value;
+        });
+    }
     get(key: string): T {
         return this.data[key];
     }
     iter(): { key: string, value: T }[] {
-        var res = [];
-        for (var it in this.data) {
-            if (this.data.hasOwnProperty(it)) {
-                res.push({ key: it, value: this.data[it] });
-            }
-        }
-        return res;
+        return iterateStringKeyObject<T>(this.data);
     }
     toString(): string {
         return JSON.stringify(this.data);
@@ -221,6 +242,10 @@ export class Repo {
     private _defaultBranchName: string;
     private _currentBranchName: string;
     private _refs: StringMap<Ref>;
+    private _commits: StringMap<Commit>;
+    private _index: string[];
+    private _staged: string[];
+    private _fs: FileSystem.IFileSystem;
     /**
      * Constructor that allows Repo creation if needed
      * @param rootPath Path to the repo itself
@@ -230,6 +255,10 @@ export class Repo {
     constructor(rootPath: string, init: boolean = false, quiet: boolean = false) {
         this._root = rootPath;
         this._refs = new StringMap<Ref>();
+        this._commits = new StringMap<Commit>();
+        this._index = [];
+        this._staged = [];
+        this._fs = FileSystem.fs();
         var jerkPath = path.join(rootPath, '.jerk');
         var stat: fs.Stats;
         try {
@@ -254,12 +283,16 @@ export class Repo {
         var config = {
             defaultBranchName: this._defaultBranchName,
             currentBranchName: this._currentBranchName,
-            refs: [],
-            refData: {}
+            refs: {},
+            commits: {},
+            index: this._index,
+            staged: this._staged
         };
         this._refs.iter().forEach(v => {
-            config.refs.push(v.key);
-            config.refData[v.key] = v.value.data();
+            config.refs[v.key] = v.value.data();
+        });
+        this._commits.iter().forEach(v => {
+            config.commits[v.key] = v.value.data();
         });
         var json = JSON.stringify(config);
         console.log(json);
@@ -268,21 +301,46 @@ export class Repo {
     private _loadConfig() {
         var jerkPath = path.join(this._root, '.jerk');
         var json: string = fs.readFileSync(path.join(jerkPath, 'config'), 'utf-8');
-        var config: { defaultBranchName: string, currentBranchName: string, refs: string[], refData: Object } = JSON.parse(json);
+        var config: {
+            defaultBranchName: string,
+            currentBranchName: string,
+            refs: Object,
+            commits: Object,
+            index: string[],
+            staged: string[]
+        } = JSON.parse(json);
         this._defaultBranchName = config.defaultBranchName;
         this._currentBranchName = config.currentBranchName;
         this._refs = new StringMap<Ref>();
-        config.refs.forEach(v => {
-            var data: string[] = config.refData[v];
+        this._commits = new StringMap<Commit>();
+        iterateSerializable(config.refs).forEach(v => {
+            var key: string = v.key;
+            var data: string[] = v.value;
             var type = data[0];
             if (type === "Ref") {
-                this._refs.put(v, new Ref(data[2], data[0], parseInt(data[3])));
+                this._refs.put(key, new Ref(data[2], data[0], parseInt(data[3])));
             } else if (type === "Branch") {
-                this._refs.put(v, new Branch(data[2], data[0], parseInt(data[3])));
+                this._refs.put(key, new Branch(data[2], data[0], parseInt(data[3])));
             } else if (type == "Tag") {
-                this._refs.put(v, new Tag(data[2], data[0], parseInt(data[3])));
+                this._refs.put(key, new Tag(data[2], data[0], parseInt(data[3])));
             }
-        })
+        });
+        iterateSerializable(config.commits).forEach(v => {
+            var key: string = v.key;
+            var data: string[] = v.value;
+            var type = data[0];
+            if (type !== "Commit") throw "Unexpected object type while expecting Commit";
+            //["Commit", this._id, this._message, this._authorName, this._authorEMail,
+            //this._parentId, this._time.toString(), JSON.stringify(this._contents),
+            //this._mergeOf, JSON.stringify(this._changed)]
+            var contents = new StringMap<string>(JSON.parse(data[7]));
+            var commit = new Commit(data[1], this,
+                data[5], data[2], data[3], data[4], parseInt(data[6]), contents,
+                data[8], JSON.parse(data[9]));
+            this._commits.put(key, commit);
+        });
+        this._index = config.index;
+        this._staged = config.staged;
         console.log(this);
     }
     /**
@@ -316,11 +374,11 @@ export class Repo {
     /**
      * Get commit by its ID
      */
-    commit(id: string): Commit { throw "Not Implemented"; }
+    commit(id: string): Commit { return this._commits.get(id); }
     /**
      * Get all commits in this repo.
      */
-    commits(): Commit[] { throw "Not Implemented"; }
+    commits(): Commit[] { return [].concat(this._commits); }
     /**
      * Find Ref by its name
      */
@@ -334,17 +392,23 @@ export class Repo {
     /**
      * Staged file paths to commit
      */
-    get staged(): string[] { throw "Not Implemented"; }
-    set staged(paths: string[]) { throw "Not Implemented"; }
-    stage(path: string) { throw "Not Implemented"; }
-    unstage(path: string) { throw "Not Implemented"; }
+    get staged(): string[] { return [].concat(this._staged); }
+    set staged(paths: string[]) { this._staged = paths; }
+    stage(path: string) { this._staged.push(path); }
+    unstage(path: string) {
+        var i = this._staged.indexOf(path);
+        if (i >= 0) this._staged.splice(i, 1, ...[]);
+    }
     /**
      * File paths to track changes of
      */
-    get index(): string[] { throw "Not Implemented"; }
-    set index(paths: string[]) { throw "Not Implemented"; }
-    addToIndex(path: string) { throw "Not Implemented"; }
-    rmFromIndex(path: string) { throw "Not Implemented"; }
+    get index(): string[] { return [].concat(this._index); }
+    set index(paths: string[]) { this._index = paths; }
+    addToIndex(path: string) { this._index.push(path); }
+    rmFromIndex(path: string) {
+        var i = this._index.indexOf(path);
+        if (i >= 0) this._index.splice(i, 1, ...[]);
+    }
     /**
      * Get absolute path of the root of this repo.
      */
@@ -358,7 +422,33 @@ export class Repo {
      * @param previous the commit to base on or null if it is first commit in bare branch or repo
      */
     createCommit(previous: Commit, message: string = null,
-        authorName: string = null, authorEMail: string = null): Commit { throw "Not Implemented"; }
+        authorName: string = null, authorEMail: string = null, mergeOf: string = null): Commit {
+        var ts: number = new Date().getTime();
+        var hash: string = createHash('sha256').update(message || ts, 'utf-8').digest('hex');
+        var contents = new StringMap<string>();
+        if (!!previous) {
+            contents.copyFrom(previous['_contents']);
+        }
+        this._staged.forEach(v => {
+            var buf = fs.readFileSync(v);
+            var fo: FileSystem.FileObject;
+            var foFound = this._fs.resolveObjectByContents(buf);
+            if (!foFound) {
+                fo = this._fs.create(buf);
+            } else if (foFound.isSymlink()) {
+                console.error(logSymbols.warning, 'hash collision between file and symlink detected!');
+                throw "Hash collision";
+            } else {
+                fo = foFound.asFile();
+            }
+            contents.put(v, fo.hash());
+        });
+        var commit = new Commit(hash, this, !!previous ? previous.id : null,
+            message, authorName, authorEMail, ts, contents, mergeOf, this.staged);
+        this._commits.put(hash, commit);
+        this._staged = [];
+        return commit;
+    }
     /**
      * Create new Ref from string
      */
