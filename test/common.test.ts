@@ -59,18 +59,18 @@ describe("Common", function () {
                 assert.equal(second_commit.parent, init_commit);
             });
             it("check parent's hash", function () {
-                assert.equal(second_commit.parentHash, init_commit.id);
+                assert.equal(second_commit.parentId, init_commit.id);
             });
             it("check that commit's UNIX time less than current UNIX time", function () {
                 var UNIX = new Date();
                 assert.ok((UNIX.getTime() > second_commit.time), "wrong UNIX timestamp");
             });
             it("checks path of file returned by \"contents\" function", function () {
-                assert.equal(init_commit.contents()[0].path, "~/ws13/test/test_repo/test.test",
+                assert.equal(init_commit.contents[0].path, "~/ws13/test/test_repo/test.test",
                     "wrong path");
             });
             it("checks path of file returned by \"file\" function", function () {
-                assert.equal(init_commit.contents()[0].path, "~/ws13/test/test_repo/test.test",
+                assert.equal(init_commit.contents[0].path, "~/ws13/test/test_repo/test.test",
                     "wrong path");
             });
         });
@@ -80,7 +80,7 @@ describe("Common", function () {
             test_repo.createRef("Test_ref");
             ref.move(second_commit.id);
         });
-        it("compares second_commit ID and branch ref.head", () => {
+        it("compares second_commit ID and ref.head", () => {
             assert.equal(ref.head, second_commit.id, "wrong head");
         });
     });
