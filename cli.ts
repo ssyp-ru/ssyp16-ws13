@@ -22,7 +22,7 @@ module CLI {
     }
 }
 program
-    .version(colors.rainbow("dev") + " build");
+    .version(colors.rainbow("WIP") + " build");
 program
     .command("init")
     .description("Initialize new repo in current working directory")
@@ -52,7 +52,9 @@ program
             console.log(colors.dim('JERK'), logSymbols.info, "not currently in a jerk repository.");
             return;
         }
-        console.log(colors.dim('JERK'), logSymbols.info, repo.name, '(', repo.currentBranchName, ')');
+        var mod = 'not modified';
+        console.log(colors.dim('JERK'), logSymbols.info,
+            colors.blue(repo.name), '>', colors.orange(repo.currentBranchName), '>', colors.bold(mod));
     });
 program.parse(process.argv);
 if (!process.argv.slice(2).length) {

@@ -255,11 +255,14 @@ export class Repo {
      */
     constructor(rootPath: string, init: boolean = false, quiet: boolean = false) {
         this._root = rootPath;
+        this._defaultBranchName = 'master';
+        this._currentBranchName = 'master';
         this._refs = new StringMap<Ref>();
         this._commits = new StringMap<Commit>();
         this._index = [];
         this._staged = [];
         this._fs = fs.fs();
+        if (!this.local) return;
         var jerkPath = path.join(rootPath, '.jerk');
         var stat: nfs.Stats;
         try {
@@ -271,8 +274,6 @@ export class Repo {
             }
             nfs.mkdirSync(jerkPath, 0o755);
             this.createBranch('master', null);
-            this._defaultBranchName = 'master';
-            this._currentBranchName = 'master';
             this._saveConfig();
             if (!quiet) console.log(colors.dim('JERK'), logSymbols.success, "repository created successfully!");
             return;
@@ -489,7 +490,20 @@ export class Repo {
      * Fetch remote repo metadata and create remote repo implementation class matching it
      * @param url remote URL
      */
-    createRemoteRepo(url: string): Repo { throw "Not Implemented"; }
+    createRemoteRepo(url: string, quiet: boolean = false): Repo {
+        return new RemoteRepo(url, false, quiet);
+    }
+    get local(): boolean {
+        return true;
+    }
+}
+class RemoteRepo extends Repo {
+    constructor(rootPath: string, init: boolean = false, quiet: boolean = false) {
+        super(rootPath, false, quiet);
+    }
+    get local(): boolean {
+        return false;
+    }
 }
 export function cwdRepo(): Repo {
     let cwd = process.cwd();
