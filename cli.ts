@@ -1,18 +1,13 @@
 #!/usr/bin/node
-
-var program = require('commander');
+/// <reference path="log-symbols.d.ts" />
 var colors = require('colors/safe');
+var program = require('commander');
 import * as child_process from "child_process";
 var logSymbols = require('log-symbols');
 import * as fs from "fs";
 import * as path from 'path';
 import * as Common from './common';
 
-// console.log(logSymbols.success, 'finished successfully!');
-// console.log(logSymbols.info, 'there is a trap here!');
-// console.log(logSymbols.warning, 'done, with warnings!');
-// console.log(logSymbols.error, 'operation failed!');
-//import * as commander from 'commander';
 module CLI {
     export function init(path: string, quiet: boolean = false) {
         fs.stat(path, (err, stats) => {

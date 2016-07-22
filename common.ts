@@ -6,40 +6,77 @@ import * as path from 'path';
 var parents = require('parents');
 var colors = require('colors/safe');
 var logSymbols = require('log-symbols');
+var createHash = require('sha.js');
 /**
  * Commit class representation
  */
 export class Commit {
-    get id(): string { throw "Not Implemented"; }
-    get message(): string { throw "Not Implemented"; }
-    get authorName(): string { throw "Not Implemented"; }
-    get authorEMail(): string { throw "Not Implemented"; }
-    get parentHash(): string { throw "Not Implemented"; }
-    get parent(): Commit { throw "Not Implemented"; }
+    private _id: string;
+    private _message: string;
+    private _authorName: string;
+    private _authorEMail: string;
+    private _parentId: string;
+    private _time: number;
+    private _contents: StringMap<string>;
+    private _mergeOf: string;
+    private _changed: string[];
+    private _repo: Repo;
+    constructor(id: string, repo: Repo, parentId: string = null,
+        message: string = null, authorName: string = null, authorEMail: string = null,
+        time: number = new Date().getTime(), contents: StringMap<string> = new StringMap<string>(),
+        mergeOf: string = null, changed: string[] = []) {
+        this._id = id;
+        this._repo = repo;
+        this._message = message;
+        this._authorName = authorName;
+        this._authorEMail = authorEMail;
+        this._parentId = parentId;
+        this._time = time;
+        this._contents = contents;
+        this._mergeOf = mergeOf;
+        this._changed = changed;
+    }
+    get id(): string { return this._id; }
+    get message(): string { return this._message; }
+    get authorName(): string { return this._authorName; }
+    get authorEMail(): string { return this._authorEMail; }
+    get parentId(): string { return this._parentId; }
+    get parent(): Commit { return this._repo.commit(this._parentId); }
     /**
      * UNIX timestamp of the time the commit was created
      */
-    get time(): number { throw "Not Implemented"; }
+    get time(): number { return this._time; }
     /**
      * Returns file tree. Format is like:
      * [ { path: "/test.txt", hash: "1241aea1bd502fa41" }, 
      *   { path: "/sub/test2.txt", hash: "ada6d7c434effa807" } ]
      */
-    contents(): { path: string; hash: string }[] { throw "Not Implemented"; }
+    contents(): { path: string; hash: string }[] {
+        var res: { path: string; hash: string }[] = [];
+        this._contents.iter().forEach(v => {
+            var path = v.key;
+            var hash = v.value;
+            res.push({ path: path, hash: hash });
+        });
+        return res;
+    }
     /**
      * Returns hash of the object represented by given path
      */
-    file(path: string): string { throw "Not Implemented"; }
+    file(path: string): string { return this._contents.get(path); }
     /** 
      * Branch merged, or null if none merged by this commit
      */
-    get mergeOf(): Branch { throw "Not Implemented"; }
-    set mergeOf(branch: Branch) { throw "Not Implemented"; }
+    get mergeOf(): Branch {
+        if (!this._mergeOf) return null;
+        return this._repo.ref<Branch>(this._mergeOf);
+    }
+    set mergeOf(branch: Branch) { this._mergeOf = branch.name; }
     /**
      * Changed file paths in this commit. For optimization of many internal things.
      */
-    get changed(): string[] { throw "Not Implemented"; }
-    set changed(paths: string[]) { throw "Not Implemented"; }
+    get changed(): string[] { return this._changed; }
+    set changed(paths: string[]) { this._changed = paths; }
 }
 
 /**
@@ -121,6 +158,9 @@ export class Ref {
     data(): string[] {
         return ["Ref", this._name, this._head, this._ts.toString()];
     }
+    toString(): string {
+        return JSON.stringify(this.data());
+    }
 }
 
 /**
@@ -168,6 +208,9 @@ class StringMap<T> {
             }
         }
         return res;
+    }
+    toString(): string {
+        return JSON.stringify(this.data);
     }
 }
 /**

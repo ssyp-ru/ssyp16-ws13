@@ -7,8 +7,8 @@
             "request": "launch",
             "program": "${workspaceRoot}/cli.js",
             "stopOnEntry": false,
-            "args": [],
-            "cwd": "${workspaceRoot}",
+            "args": ["status"],
+            "cwd": "/home/ssyp/jerk-test",
             "preLaunchTask": "tsc",
             "runtimeExecutable": null,
             "runtimeArgs": [
