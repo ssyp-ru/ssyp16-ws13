@@ -333,7 +333,6 @@ export class Repo {
             config.commits[v.key] = v.value.data();
         });
         var json = JSON.stringify(config);
-        // console.log(json);
         nfs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o644 });
     }
     private _loadConfig() {
@@ -405,7 +404,11 @@ export class Repo {
     /**
      * Get default for this repo branch.
      */
-    get defaultBranch(): Branch { return this.ref<Branch>(this._defaultBranchName); }
+    get defaultBranch(): Branch {
+        var name = this._defaultBranchName;
+        if (!name) return null;
+        return this.ref<Branch>(name);
+    }
     /**
      * Get or set current branch name. Checks branch name for existance.
      * @param name (optional) - if present, it sets current branch name to given value, returning old value.
@@ -425,7 +428,11 @@ export class Repo {
     /**
      * Get current branch.
      */
-    get currentBranch(): Branch { return this.ref<Branch>(this._defaultBranchName); }
+    get currentBranch(): Branch {
+        var name = this._currentBranchName;
+        if (!name) return null;
+        return this.ref<Branch>(name);
+    }
     /**
      * Detached HEAD commit id or null
      */

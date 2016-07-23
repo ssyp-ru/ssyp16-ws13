@@ -190,6 +190,7 @@ module Client {
     export function checkout(repo: Common.Repo, commit: Common.Commit, branch?: Common.Branch) {
         if (!!branch) {
             repo.currentBranchName = branch.name;
+            repo.detachedHEADID = null;
             revertAllWorkingTreeChanges(repo);
         } else {
             repo.currentBranchName = null;
