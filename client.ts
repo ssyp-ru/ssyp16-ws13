@@ -26,8 +26,7 @@ module Client {
         removedStaged: string[], anyNewChanges: boolean,
         anyStagedChanges: boolean, anyChanges: boolean
     } {
-        var commitID = repo.currentBranch.head;
-        var commit = !!commitID ? repo.commit(commitID) : null;
+        var commit = repo.lastCommit;
         var ignore = ['.jerk', '.jerk/**/*'];
         var all: string[] = glob.sync('**/*',
             { dot: true, nodir: true, ignore: '{' + ignore.join() + '}' });
@@ -48,6 +47,7 @@ module Client {
                     break;
                 case 1:
                     arr = isStaged ? addedStaged : added;
+                    repo.addToIndex(v);
                     break;
                 case 2:
                     arr = isStaged ? removedStaged : removed;
@@ -70,7 +70,7 @@ module Client {
                         try {
                             stat = fs.lstatSync(v);
                             if (!!stat) {
-                                if (tf.time < stat.ctime.getTime()) {
+                                if (tf.time < stat.mtime.getTime()) {
                                     push(v, 0);
                                 }
                             }
@@ -95,6 +95,7 @@ module Client {
                 if (!quiet) console.log(colors.dim('JERK'), logSymbols.warning,
                     'staged file "' + v + '" removed');
                 repo.unstage(v);
+                repo.rmFromIndex(v);
             }
         });
         all = undefined;
@@ -107,6 +108,117 @@ module Client {
             removedStaged: removedStaged, anyNewChanges: anyNewChanges,
             anyStagedChanges: anyStagedChanges, anyChanges: anyChanges
         }
+    }
+    export function revertSingleWorkingTreeChange(repo: Common.Repo, path: string) {
+        var commit = repo.lastCommit;
+        if (!commit) {
+            fs.unlinkSync(path);
+            repo.rmFromIndex(path);
+        } else {
+            var tf = commit.file(path);
+            if (!tf) {
+                fs.unlinkSync(path);
+                repo.rmFromIndex(path);
+            } else {
+                var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
+                var stat: fs.Stats;
+                try {
+                    stat = fs.lstatSync(path);
+                    if (!!stat) {
+                        if (tf.time != stat.mtime.getTime()) {
+                            fs.writeFileSync(path, fo.buffer(), { flag: 'w' });
+                            fs.utimesSync(path, new Date(tf.time), new Date(tf.time));
+                            repo.addToIndex(path);
+                        }
+                    } else {
+                        fs.writeFileSync(path, fo.buffer(), { flag: 'w' });
+                        fs.utimesSync(path, new Date(tf.time), new Date(tf.time));
+                        repo.addToIndex(path);
+                    }
+                } catch (e) {
+                    fs.writeFileSync(path, fo.buffer(), { flag: 'w' });
+                    fs.utimesSync(path, new Date(tf.time), new Date(tf.time));
+                    repo.addToIndex(path);
+                }
+            }
+        }
+    }
+    export function revertAllWorkingTreeChanges(repo: Common.Repo) {
+        var commit = repo.lastCommit;
+        var res = status(repo);
+        var modified = res.modified;
+        var modifiedStaged = res.modifiedStaged;
+        var added = res.added;
+        var addedStaged = res.addedStaged;
+        var removed = res.removed;
+        var removedStaged = res.removedStaged;
+        var anyChanges = res.anyChanges;
+        var anyNewChanges = res.anyNewChanges;
+        var anyStagedChanges = res.anyStagedChanges;
+        if (!anyChanges) {
+            return;
+        }
+        modified.concat(modifiedStaged).forEach(v => {
+            if (!commit) {
+                fs.unlinkSync(v);
+                repo.rmFromIndex(v);
+            } else {
+                var tf = commit.file(v);
+                var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
+                fs.writeFileSync(v, fo.buffer(), { flag: 'w' });
+                fs.utimesSync(v, new Date(tf.time), new Date(tf.time));
+                repo.addToIndex(v);
+            }
+        });
+        added.concat(addedStaged).forEach(v => {
+            fs.unlinkSync(v);
+            repo.rmFromIndex(v);
+        })
+        removed.concat(removedStaged).forEach(v => {
+            if (!commit) {
+                console.log(colors.dim('JERK'), logSymbols.error, 'unexpected file removal without HEAD commit');
+                return;
+            } else {
+                var tf = commit.file(v);
+                var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
+                fs.writeFileSync(v, fo.buffer(), { flag: 'w' });
+                fs.utimesSync(v, new Date(tf.time), new Date(tf.time));
+                repo.addToIndex(v);
+            }
+        });
+    }
+    export function checkout(repo: Common.Repo, commit: Common.Commit, branch?: Common.Branch) {
+        if (!!branch) {
+            repo.currentBranchName = branch.name;
+            revertAllWorkingTreeChanges(repo);
+        } else {
+            repo.currentBranchName = null;
+            repo.detachedHEADID = commit.id;
+            revertAllWorkingTreeChanges(repo);
+        }
+        commit.contents.forEach(v => {
+            var fo = repo.fs.resolveObjectByHash(v.hash).asFile();
+            var stat: fs.Stats;
+            try {
+                stat = fs.lstatSync(v.path);
+                if (!!stat) {
+                    if (v.time != stat.mtime.getTime()) {
+                        fs.writeFileSync(v.path, fo.buffer(), { flag: 'w' });
+                        fs.utimesSync(v.path, new Date(v.time), new Date(v.time));
+                        repo.addToIndex(v.path);
+                    }
+                } else {
+                    fs.writeFileSync(v.path, fo.buffer(), { flag: 'w' });
+                    fs.utimesSync(v.path, new Date(v.time), new Date(v.time));
+                    repo.addToIndex(v.path);
+                }
+            } catch (e) {
+                fs.writeFileSync(v.path, fo.buffer(), { flag: 'w' });
+                fs.utimesSync(v.path, new Date(v.time), new Date(v.time));
+                repo.addToIndex(v.path);
+            }
+        });
+        revertAllWorkingTreeChanges(repo);
     }
 }
 export = Client;

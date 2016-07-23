@@ -61,7 +61,10 @@ export class Commit extends Serializable {
     get authorName(): string { return this._authorName; }
     get authorEMail(): string { return this._authorEMail; }
     get parentId(): string { return this._parentId; }
-    get parent(): Commit { return this._repo.commit(this._parentId); }
+    get parent(): Commit {
+        if (!this._parentId) return null;
+        return this._repo.commit(this._parentId);
+    }
     /**
      * UNIX timestamp of the time the commit was created
      */
@@ -272,6 +275,7 @@ export class Repo {
     private _root: string;
     private _defaultBranchName: string;
     private _currentBranchName: string;
+    private _detachedHEAD: string;
     private _refs: StringMap<Ref>;
     private _commits: StringMap<Commit>;
     private _index: string[];
@@ -287,6 +291,7 @@ export class Repo {
         this._root = rootPath;
         this._defaultBranchName = 'master';
         this._currentBranchName = 'master';
+        this._detachedHEAD = null;
         this._refs = new StringMap<Ref>();
         this._commits = new StringMap<Commit>();
         this._index = [];
@@ -315,6 +320,7 @@ export class Repo {
         var config = {
             defaultBranchName: this._defaultBranchName,
             currentBranchName: this._currentBranchName,
+            detachedHEAD: this._detachedHEAD,
             refs: {},
             commits: {},
             index: this._index,
@@ -336,6 +342,7 @@ export class Repo {
         var config: {
             defaultBranchName: string,
             currentBranchName: string,
+            detachedHEAD: string,
             refs: Object,
             commits: Object,
             index: string[],
@@ -343,6 +350,7 @@ export class Repo {
         } = JSON.parse(json);
         this._defaultBranchName = config.defaultBranchName;
         this._currentBranchName = config.currentBranchName;
+        this._detachedHEAD = config.detachedHEAD;
         this._refs = new StringMap<Ref>();
         this._commits = new StringMap<Commit>();
         iterateSerializable(config.refs).forEach(v => {
@@ -377,7 +385,6 @@ export class Repo {
         });
         this._index = config.index;
         this._staged = config.staged;
-        // console.log(this);
     }
     /**
      * Default for this repo branch name. Checks branch name for existance.
@@ -385,6 +392,11 @@ export class Repo {
      */
     get defaultBranchName(): string { return this._defaultBranchName; }
     set defaultBranchName(name: string) {
+        if (!name) {
+            this._defaultBranchName = null;
+            this._saveConfig();
+            return;
+        }
         var branch = this.ref<Branch>(name);
         if (!branch) throw "Branch not found";
         this._defaultBranchName = name;
@@ -400,6 +412,11 @@ export class Repo {
      */
     get currentBranchName(): string { return this._currentBranchName; }
     set currentBranchName(name: string) {
+        if (!name) {
+            this._currentBranchName = null;
+            this._saveConfig();
+            return;
+        }
         var branch = this.ref<Branch>(name);
         if (!branch) throw "Branch not found";
         this._currentBranchName = name;
@@ -410,9 +427,40 @@ export class Repo {
      */
     get currentBranch(): Branch { return this.ref<Branch>(this._defaultBranchName); }
     /**
+     * Detached HEAD commit id or null
+     */
+    get detachedHEADID(): string { return this._detachedHEAD; }
+    set detachedHEADID(id: string) {
+        if (!id) {
+            this._detachedHEAD = null;
+            this._saveConfig();
+            return;
+        }
+        var commit = this.commit(id);
+        if (!commit) throw "Commit not found";
+        this._detachedHEAD = id;
+        this._saveConfig();
+    }
+    /**
+     * Detached HEAD commit or null
+     */
+    get detachedHEAD(): Commit {
+        if (!this._detachedHEAD) return null;
+        return this.commit(this._detachedHEAD);
+    }
+    /**
      * Get commit by its ID
      */
-    commit(id: string): Commit { return this._commits.get(id); }
+    commit(id: string): Commit {
+        var short = id.length < 60;
+        if (short) {
+            var applicable = this._commits.iter().filter(v => v.key.startsWith(id));
+            if (applicable.length == 0) return null;
+            if (applicable.length == 1) return applicable[0].value;
+            throw "Multiple commits found, use full commit notation"
+        }
+        return this._commits.get(id);
+    }
     /**
      * Get all commits in this repo.
      */
@@ -436,12 +484,14 @@ export class Repo {
         this._saveConfig();
     }
     stage(path: string) {
+        if (this._staged.indexOf(path) >= 0) return;
         this._staged.push(path);
         this._saveConfig();
     }
     unstage(path: string) {
         var i = this._staged.indexOf(path);
-        if (i >= 0) this._staged.splice(i, 1, ...[]);
+        if (i < 0) return;
+        this._staged.splice(i, 1, ...[]);
         this._saveConfig();
     }
     /**
@@ -453,13 +503,16 @@ export class Repo {
         this._saveConfig();
     }
     addToIndex(path: string) {
+        if (this._index.indexOf(path) >= 0) return;
         this._index.push(path);
         this._saveConfig();
     }
     rmFromIndex(path: string) {
         var i = this._index.indexOf(path);
-        if (i >= 0) this._index.splice(i, 1, ...[]);
-        this._saveConfig();
+        if (i >= 0) {
+            this._index.splice(i, 1, ...[]);
+            this._saveConfig();
+        }
     }
     /**
      * Get absolute path of the root of this repo.
@@ -494,13 +547,15 @@ export class Repo {
             } else {
                 fo = foFound.asFile();
             }
-            contents.put(v, new TreeFile(v, stats.ctime.getTime(), fo.hash()));
+            contents.put(v, new TreeFile(v, stats.mtime.getTime(), fo.hash()));
         });
         var commit = new Commit(hash, this, !!previous ? previous.id : null,
             message, authorName, authorEMail, ts, contents, mergeOf, this.staged);
         this._commits.put(hash, commit);
         this._staged = [];
-        this.currentBranch.move(hash);
+        if (!!this._currentBranchName) {
+            this.currentBranch.move(hash);
+        }
         this._saveConfig();
         return commit;
     }
@@ -522,7 +577,7 @@ export class Repo {
             throw "Invalid branch name";
         }
         if (commit === undefined) {
-            commit = this.currentBranch.head;
+            var commitID = this.lastCommitID;
         }
         var branch = new Branch(commit, branchName);
         this._refs.put(branchName, branch);
@@ -537,7 +592,7 @@ export class Repo {
         if (tagName.includes('~')) {
             throw "Invalid tag name";
         }
-        var tag = new Tag(this.currentBranch.head, tagName);
+        var tag = new Tag(this.lastCommitID, tagName);
         this._refs.put(tagName, tag);
         this._saveConfig();
         return tag;
@@ -551,6 +606,20 @@ export class Repo {
     }
     get local(): boolean {
         return true;
+    }
+    /**
+     * Get cached FileSystem implementation
+     */
+    get fs(): fs.IFileSystem {
+        return this._fs;
+    }
+    get lastCommitID(): string {
+        return !!this.currentBranchName ? this.currentBranch.head : this.detachedHEADID;
+    }
+    get lastCommit(): Commit {
+        var lcID = this.lastCommitID;
+        if (!lcID) return null;
+        return this.commit(lcID);
     }
 }
 class RemoteRepo extends Repo {

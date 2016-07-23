@@ -71,9 +71,12 @@ program
         if (anyStagedChanges) {
             mod += ', staged';
         }
-        console.log(colors.dim('JERK'), logSymbols.info,
-            colors.blue(repo.name), '>', colors.yellow(repo.currentBranchName),
-            '>', colors.bold(mod));
+        var curCommit = repo.currentBranchName;
+        if (!curCommit) {
+            curCommit = 'HEAD #' + repo.detachedHEADID.substring(0, 7);
+        }
+        console.log(colors.dim('JERK'), logSymbols.info, colors.blue(repo.name), '>',
+            colors.yellow(curCommit), '>', colors.bold(mod));
         if (anyNewChanges) {
             console.log(colors.dim('JERK'), logSymbols.info, 'changes not staged for commit:');
             modified.forEach(v => console.log('    ' + colors.red('modified:') + '  ' + v));
@@ -142,8 +145,7 @@ program
             console.log(colors.dim('JERK'), logSymbols.error, 'either author name or email is not specified! Pass --ignoreAuthor option to bypass the check');
             return;
         }
-        var commitID = repo.currentBranch.head;
-        var commit = !!commitID ? repo.commit(commitID) : null;
+        var commit = repo.lastCommit;
         var newCommit = repo.createCommit(commit, message, authorName, authorEMail);
         console.log(colors.dim('JERK'), logSymbols.success,
             Format.formatCommitMessage(newCommit, '%Cyellow%h%Creset: %s'));
@@ -197,8 +199,7 @@ program
     .action((options: any) => {
         var repo = cwdRepo();
         console.log(colors.dim('JERK'), 'Commit Log');
-        var commitID = repo.currentBranch.head;
-        var commit = !!commitID ? repo.commit(commitID) : null;
+        var commit = repo.lastCommit;
         var graph = !!options.graph;
         if (options.format === true) {
             console.log(colors.dim('JERK'), logSymbols.error, 'unknown log format');
@@ -272,11 +273,22 @@ program
         });
     });
 program
-    .command('checkout')
+    .command('checkout <what>')
     .description('Checkout a branch, a tag or a specific commit to the working tree')
     .option('-f, --force', 'Throw away local changes, if any.')
-    .action((options: any) => {
-        
+    .action((what: string, options: any) => {
+        var repo = cwdRepo();
+        var commit = repo.commit(what);
+        var branch = repo.ref<Common.Branch>(what);
+        if (!commit && !!branch) {
+            commit = repo.commit(branch.head);
+        }
+        if (!commit) {
+            console.log(colors.dim('JERK'), logSymbols.error, 'Commit or branch to checkout not found!');
+            return;
+        }
+        if (options.force) Client.revertAllWorkingTreeChanges(repo);
+        Client.checkout(repo, commit, branch);
     });
 program.parse(process.argv);
 if (!process.argv.slice(2).length) {
