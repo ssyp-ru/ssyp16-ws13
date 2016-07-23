@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as Common from './common';
 import program = require('commander');
 var glob = require('glob');
+import * as Moment from 'moment';
 import Configstore = require('configstore');
 const conf = new Configstore('jerk');
 
@@ -185,7 +186,7 @@ program
     });
 program
     .command('add [files...]')
-    .description('Stage files to be commited in the nearest future.')
+    .description('Stage files to be commited in the nearest future')
     .option('-A, --all', 'Add all available files to stage')
     .action((files: string[], options: any) => {
         var repo = cwdRepo();
@@ -283,21 +284,145 @@ program
             }
         }
     });
+const onelineFormat = "%Cyellow%h%Creset %s";
+const onelineWideFormat = "%Cyellow%h%Creset %Cgreen(%an, %ar)%Creset %s";
+const shortFormat = "commit %Cyellow%h%Creset%nAuthor: %Cgreen%an%Creset%n%s";
+const mediumFormat = "commit %Cyellow%h%Creset%nAuthor: %Cgreen%an%Creset%nDate: %ad%n%b";
+const fullFormat = "commit %Cyellow%h%Creset%nAuthor: %Cgreen%an%Creset%nCommit: %Cgreen%cn%Creset%n%b";
+const fullerFormat = "commit %Cyellow%h%Creset%nAuthor: %Cgreen%an%Creset%nAuthorDate: %ad%nCommit: %Cgreen%cn%Creset%nCommitDate: %cd%n%b";
 program
     .command('log')
     .description('Show commits log')
     .option('-g, --graph', 'Output as commit graph')
+    .option('-f, --format <format>', 'Set output formatting', /^(oneline|onelineWide|short|medium|full|fuller|format=.*)$/i, 'short')
     .action((options: any) => {
         var repo = cwdRepo();
         console.log(colors.dim('JERK'), 'Commit Log');
         var commitID = repo.currentBranch.head;
         var commit = !!commitID ? repo.commit(commitID) : null;
+        var graph = !!options.graph;
+        var format: string = options.format || (graph ? 'onelineWide' : 'short');
+        if (format.startsWith('format=')) {
+            format = format.substring(7);
+        } else {
+            switch (format) {
+                case 'oneline':
+                    format = onelineFormat;
+                    break;
+                case 'onelineWide':
+                    format = onelineWideFormat;
+                    break;
+                case 'short':
+                    format = shortFormat;
+                    break;
+                case 'medium':
+                    format = mediumFormat;
+                    break;
+                case 'full':
+                    format = fullFormat;
+                    break;
+                case 'fuller':
+                    format = fullerFormat;
+                    break;
+                default:
+                    break;
+            }
+        }
         if (!commit) {
             console.log('No commits found.');
             return;
         }
         while (!!commit) {
-            console.log(colors.yellow('*'), commit.message);
+            var message = "";
+            var special = false;
+            for (var i = 0; i < format.length; i++) {
+                var c = format[i];
+                if (c !== '%' && !special) {
+                    message += c;
+                    continue;
+                } else if (c !== '%' && special) {
+                    if (c == 'C') {
+                        // Color
+                        function isNext(str: string): boolean {
+                            if (format.length - (i + 1) < str.length) return false;
+                            var strI = 0;
+                            for (var j = i + 1; j < format.length; j++) {
+                                if (format[j] != str[strI++]) return false;
+                                if (strI >= str.length) break;
+                            }
+                            i += str.length;
+                            return true;
+                        }
+                        var colorCodes = {
+                            black: 30,
+                            red: 31,
+                            green: 32,
+                            yellow: 33,
+                            blue: 34,
+                            magenta: 35,
+                            cyan: 36,
+                            white: 37,
+                            gray: 90,
+                            grey: 90
+                        }
+                        if (isNext('reset')) message += '\u001b[' + 39 + 'm'; else
+                            if (isNext('black')) message += '\u001b[' + colorCodes.black + 'm'; else
+                                if (isNext('red')) message += '\u001b[' + colorCodes.red + 'm'; else
+                                    if (isNext('green')) message += '\u001b[' + colorCodes.green + 'm'; else
+                                        if (isNext('yellow')) message += '\u001b[' + colorCodes.yellow + 'm'; else
+                                            if (isNext('blue')) message += '\u001b[' + colorCodes.blue + 'm'; else
+                                                if (isNext('magenta')) message += '\u001b[' + colorCodes.magenta + 'm'; else
+                                                    if (isNext('cyan')) message += '\u001b[' + colorCodes.cyan + 'm'; else
+                                                        if (isNext('white')) message += '\u001b[' + colorCodes.white + 'm'; else
+                                                            if (isNext('gray')) message += '\u001b[' + colorCodes.gray + 'm'; else
+                                                                if (isNext('grey')) message += '\u001b[' + colorCodes.grey + 'm';
+
+                    } else if (c == 'h') {
+                        // SHA
+                        message += commit.id;
+                    } else if (c == 's') {
+                        // Title
+                        message += commit.message.split('\n').shift();
+                    } else if (c == 'b') {
+                        // Body
+                        message += commit.message;
+                    } else if (c == 'a') {
+                        // Author
+                        if (format[i + 1] == 'd') {
+                            message += Moment(new Date(commit.time)).format('DD-MM-YYYY HH:MM:SS');
+                        } else if (format[i + 1] == 'n') {
+                            message += commit.authorName;
+                        } else if (format[i + 1] == 'e') {
+                            message += commit.authorEMail;
+                        } else if (format[i + 1] == 'r') {
+                            message += Moment(new Date(commit.time)).fromNow();
+                        }
+                        i++;
+                    } else if (c == 'c') {
+                        // Committer
+                        if (format[i + 1] == 'd') {
+                            message += Moment(new Date(commit.time)).format('DD-MM-YYYY HH:MM:SS');
+                        } else if (format[i + 1] == 'n') {
+                            message += commit.authorName;
+                        } else if (format[i + 1] == 'e') {
+                            message += commit.authorEMail;
+                        } else if (format[i + 1] == 'r') {
+                            message += Moment(new Date(commit.time)).fromNow();
+                        }
+                        i++;
+                    } else if (c == 'n') {
+                        // New line
+                        message += '\n';
+                    } else if (c == '%') {
+                        // %
+                        message += '%';
+                    }
+                    special = false;
+                    continue;
+                }
+                special = true;
+            }
+            console.log(colors.yellow('*'), message);
             commit = commit.parent;
         }
     });
