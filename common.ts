@@ -370,6 +370,7 @@ export class Repo {
         var branch = this.ref<Branch>(name);
         if (!branch) throw "Branch not found";
         this._defaultBranchName = name;
+        this._saveConfig();
     }
     /**
      * Get default for this repo branch.
@@ -384,6 +385,7 @@ export class Repo {
         var branch = this.ref<Branch>(name);
         if (!branch) throw "Branch not found";
         this._currentBranchName = name;
+        this._saveConfig();
     }
     /**
      * Get current branch.
@@ -411,21 +413,35 @@ export class Repo {
      * Staged file paths to commit
      */
     get staged(): string[] { return [].concat(this._staged); }
-    set staged(paths: string[]) { this._staged = paths; }
-    stage(path: string) { this._staged.push(path); }
+    set staged(paths: string[]) {
+        this._staged = paths;
+        this._saveConfig();
+    }
+    stage(path: string) {
+        this._staged.push(path);
+        this._saveConfig();
+    }
     unstage(path: string) {
         var i = this._staged.indexOf(path);
         if (i >= 0) this._staged.splice(i, 1, ...[]);
+        this._saveConfig();
     }
     /**
      * File paths to track changes of
      */
     get index(): string[] { return [].concat(this._index); }
-    set index(paths: string[]) { this._index = paths; }
-    addToIndex(path: string) { this._index.push(path); }
+    set index(paths: string[]) {
+    this._index = paths;
+        this._saveConfig();
+    }
+    addToIndex(path: string) {
+        this._index.push(path);
+        this._saveConfig();
+    }
     rmFromIndex(path: string) {
         var i = this._index.indexOf(path);
         if (i >= 0) this._index.splice(i, 1, ...[]);
+        this._saveConfig();
     }
     /**
      * Get absolute path of the root of this repo.
@@ -466,6 +482,7 @@ export class Repo {
             message, authorName, authorEMail, ts, contents, mergeOf, this.staged);
         this._commits.put(hash, commit);
         this._staged = [];
+        this._saveConfig();
         return commit;
     }
     /**
@@ -474,6 +491,7 @@ export class Repo {
     createRef(ref: string): Ref {
         if (!Ref.validRefName(ref)) throw "Invalid ref name";
         var complex: boolean = ref.includes('~');
+        this._saveConfig();
         throw "Not Implemented";
     }
     /**
@@ -489,6 +507,7 @@ export class Repo {
         }
         var branch = new Branch(commit, branchName);
         this._refs.put(branchName, branch);
+        this._saveConfig();
         return branch;
     }
     /**
@@ -501,6 +520,7 @@ export class Repo {
         }
         var tag = new Tag(this.currentBranch.head, tagName);
         this._refs.put(tagName, tag);
+        this._saveConfig();
         return tag;
     }
     /**

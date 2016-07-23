@@ -5,7 +5,6 @@ import fs = require('./fs');
  *    hunk - a large piece of something, especially food, cut or broken off a larger piece
  * In SVN and JERK it is just a piece of file modified.
  * Patch consists of multiple hunks.
- * Commit consists of multiple patches.
  */
 module Hulk {
     /**
