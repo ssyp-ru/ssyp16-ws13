@@ -95,6 +95,7 @@ module CLI {
                     }
                 }
             } else {
+                repo.addToIndex(v);
                 push(v, 1);
             }
         });
@@ -300,6 +301,18 @@ program
             commit = commit.parent;
         }
     });
+program
+    .command('branch')
+    .description('List, create or delete branches')
+    .option('-a, --all', 'Show all branches')
+    .action((options: any) => {
+        var repo = cwdRepo();
+        console.log(colors.dim('JERK'), 'Branches');
+        repo.refs().filter(x => x instanceof Common.Branch).forEach(x => {
+            if (x.name.startsWith('remote/') && !options.all) return;
+            console.log(colors.yellow('*'), x.name);
+        });
+    })
 program.parse(process.argv);
 if (!process.argv.slice(2).length) {
     program.outputHelp();

@@ -243,6 +243,24 @@ export class StringMap<T> {
     iter(): { key: string, value: T }[] {
         return iterateStringKeyObject<T>(this.data);
     }
+    iterKeys(): string[] {
+        var res: string[] = [];
+        for (var it in this.data) {
+            if (this.data.hasOwnProperty(it)) {
+                res.push(it);
+            }
+        }
+        return res;
+    }
+    iterValues(): T[] {
+        var res: T[] = [];
+        for (var it in this.data) {
+            if (this.data.hasOwnProperty(it)) {
+                res.push(this.data[it]);
+            }
+        }
+        return res;
+    }
     toString(): string {
         return JSON.stringify(this.data);
     }
@@ -332,11 +350,11 @@ export class Repo {
             var data: string[] = v.value;
             var type = data[0];
             if (type === "Ref") {
-                this._refs.put(key, new Ref(data[2], data[0], parseInt(data[3])));
+                this._refs.put(key, new Ref(data[2], data[1], parseInt(data[3])));
             } else if (type === "Branch") {
-                this._refs.put(key, new Branch(data[2], data[0], parseInt(data[3])));
+                this._refs.put(key, new Branch(data[2], data[1], parseInt(data[3])));
             } else if (type == "Tag") {
-                this._refs.put(key, new Tag(data[2], data[0], parseInt(data[3])));
+                this._refs.put(key, new Tag(data[2], data[1], parseInt(data[3])));
             }
         });
         iterateSerializable(config.commits).forEach(v => {
@@ -348,7 +366,7 @@ export class Repo {
             //this._parentId, this._time.toString(), JSON.stringify(this._contents),
             //this._mergeOf, JSON.stringify(this._changed)]
             var contents = new StringMap<TreeFile>();
-            iterateStringKeyObject(JSON.parse(data[7])).forEach(v => {
+            iterateStringKeyObject(JSON.parse(data[7])['data']).forEach(v => {
                 var path: string = v.value['path'];
                 contents.put(path, new TreeFile(path, v.value['time'], v.value['hash']));
             });
@@ -408,7 +426,7 @@ export class Repo {
     /**
      * List all refs of this repository
      */
-    refs<T extends Ref>(): T[] { return [].concat(this._refs); }
+    refs<T extends Ref>(): T[] { return this._refs.iterValues() as T[]; }
     /**
      * Staged file paths to commit
      */
@@ -482,6 +500,7 @@ export class Repo {
             message, authorName, authorEMail, ts, contents, mergeOf, this.staged);
         this._commits.put(hash, commit);
         this._staged = [];
+        this.currentBranch.move(hash);
         this._saveConfig();
         return commit;
     }
