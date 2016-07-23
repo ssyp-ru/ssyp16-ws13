@@ -131,7 +131,6 @@ program
 program
     .command('commit [message]')
     .description('Record staged changes to repository')
-    .option('--ignoreAuthor', 'Bypass author name and email existance checks. Beware, it leads to ambiguous situations in repo management!')
     .action((message: string, options: any) => {
         var repo = cwdRepo();
         if (repo.staged.length < 1) {
@@ -141,8 +140,14 @@ program
         var authorName: string = conf.get('authorName');
         var authorEMail: string = conf.get('authorEMail');
         var noAuthor = !authorName || !authorEMail;
-        if (noAuthor && !options.ignoreAuthor) {
-            console.log(colors.dim('JERK'), logSymbols.error, 'either author name or email is not specified! Pass --ignoreAuthor option to bypass the check');
+        if (noAuthor) {
+            console.log(colors.dim('JERK'), logSymbols.error,
+                'either author name or email is not specified!');
+            return;
+        }
+        if (!!repo.detachedHEADID) {
+            console.log(colors.dim('JERK'), logSymbols.error,
+                'You can not commit in detached HEAD state. Create new branch.');
             return;
         }
         var commit = repo.lastCommit;
@@ -261,16 +266,26 @@ program
         }
     });
 program
-    .command('branch')
+    .command('branch [name]')
     .description('List, create or delete branches')
     .option('-a, --all', 'Show all branches')
-    .action((options: any) => {
+    .action((name: string, options: any) => {
         var repo = cwdRepo();
-        console.log(colors.dim('JERK'), 'Branches');
-        repo.refs().filter(x => x instanceof Common.Branch).forEach(x => {
-            if (x.name.startsWith('remote/') && !options.all) return;
-            console.log(colors.yellow('*'), x.name);
-        });
+        if (!name) {
+            console.log(colors.dim('JERK'), 'Branches');
+            repo.refs().filter(x => x instanceof Common.Branch).forEach(x => {
+                if (x.name.startsWith('remote/') && !options.all) return;
+                console.log(colors.yellow('*'), x.name);
+            });
+            return;
+        }
+        try {
+            var branch = repo.createBranch(name, repo.lastCommitID);
+            console.log(colors.dim('JERK'), logSymbols.success,
+                'Branch "' + branch.name + '" created successfully!');
+        } catch (e) {
+            console.log(colors.dim('JERK'), logSymbols.error, 'Failed to create branch: ' + e);
+        }
     });
 program
     .command('checkout <what>')
@@ -289,6 +304,12 @@ program
         }
         if (options.force) Client.revertAllWorkingTreeChanges(repo);
         Client.checkout(repo, commit, branch);
+        if (!branch) {
+            console.log(colors.dim('JERK'), logSymbols.info, "Detached HEAD");
+            console.log("You have entered 'detached HEAD' state. You can look around, make experimental changes" +
+                " and create new branch based on this commit to retain all changes you would like to make.\n" +
+                "You can NOT commit in detached HEAD state, but you can always create a new branch.");
+        }
     });
 program.parse(process.argv);
 if (!process.argv.slice(2).length) {
