@@ -13,23 +13,30 @@ module Hulk {
      */
     export class Hunk {
         /**
-         * @param past before applying this hunk
+         * @param past past applying this hunk
          * @param future after applying this hunk
          * @param offset bytes offset from the beginning of file
          */
-        constructor(past: Buffer, future: Buffer, offset: number = 0) { throw "Not Implemented"; }
+        private _past: Buffer;
+        private _future: Buffer;
+        private _offset: number;
+        constructor(past: Buffer, future: Buffer, offset: number = 0) { 
+            this._past = past;
+            this._future = future;
+            this._offset = 0;
+         }
         /**
-         * Expected Buffer to see before applying this hunk.
+         * Expected Buffer to see past applying this hunk.
          */
-        get past(): Buffer { throw "Not Implemented"; }
+        get past(): Buffer { return this._past }
         /**
         * Expected Buffer to see after applying this hunk.
         */
-        get future(): Buffer { throw "Not Implemented"; }
+        get future(): Buffer { return this._future }
         /**
          * Byte offset from the beginning of file
          */
-        get offset(): number { throw "Not Implemented"; }
+        get offset(): number { return this._offset}
         /**
          * Apply this hunk to the current Buffer.
          */
@@ -48,15 +55,23 @@ module Hulk {
          * @param past file in the past
          * @param present file now
          */
-        constructor(past: fs.FileObject, present: fs.FileObject) { throw "Not Implemented"; }
+        private past: fs.FileObject;
+        private present: fs.FileObject;
+        private _hunks: Hunk[];
+        constructor(past: fs.FileObject, present: fs.FileObject) { 
+            this.past = past;
+            this.present = present;
+            ///////////////////////////////////// _hunks = somesing
+            throw "Not Implemented";
+        }
         /**
          * List all hunks inside this Diff
          */
-        get hunks(): Hunk[] { throw "Not Implemented"; }
+        get hunks(): Hunk[] { return this._hunks; }
         /**
          * Append hunk to this Diff
          */
-        appendHunk(hunk: Hunk) { throw "Not Implemented"; }
+        appendHunk(hunk: Hunk) { this._hunks.push(hunk) }
         /**
          * Merge two diffs into single one.
          */
@@ -71,15 +86,20 @@ module Hulk {
          * @param base the basement hunk used for merging;
          * @param conflicted the conflicted hunk;
          */
-        constructor(base: Hunk, conflicted: Hunk) { throw "Not Implemented"; }
+        private _base: Hunk;
+        private _conflicted: Hunk;
+        constructor(base: Hunk, conflicted: Hunk) { 
+            this._base = base;
+            this._conflicted = conflicted;
+         }
         /**
          * The basement hunk used for merging.
          */
-        get base(): Hunk { throw "Not Implemented"; }
+        get base(): Hunk { return this._base }
         /**
          * The conflicted hunk.
          */
-        get conflicted(): Hunk { throw "Not Implemented"; }
+        get conflicted(): Hunk { return this._conflicted }
     }
 }
 export = Hulk;
