@@ -639,21 +639,22 @@ class RemoteRepo extends Repo {
 }
 export function cwdRepo(): Repo {
     let cwd = process.cwd();
-    var res: Repo;
-    function tryRepoDir(dir: string) {
+    function tryRepoDir(dir: string): Repo {
         var stats: nfs.Stats;
         try {
             stats = nfs.statSync(path.join(dir, '.jerk'));
         } catch (e) {
-            return;
+            return null;
         }
         if (!!stats) {
-            res = new Repo(dir);
+            return new Repo(dir);
         }
+        return null;
     }
-    var par: string[] = parents(cwd);
-    for (var i = 0; i < par.length; i++) {
-        tryRepoDir(par[i]);
+    var res: Repo;
+    var up = parents(cwd);
+    for (var i = 0; i < up.length; i++) {
+        res = tryRepoDir(up[i]);
         if (!!res) {
             return res;
         }
