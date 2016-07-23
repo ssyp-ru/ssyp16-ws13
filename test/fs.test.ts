@@ -6,7 +6,12 @@ var createHash = require('sha.js');
 
 describe("File System", () => {
     before(() => {
-        process.chdir("");
+        try {
+            var stat = nfs.statSync('.jerk')
+        } catch (e) {
+            nfs.mkdirSync('.jerk', 0o755);
+        }
+
     });
     describe("Class FSImplementation implements IFileSystem", () => {
         it(".create", () => {
