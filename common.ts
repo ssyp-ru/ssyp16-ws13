@@ -314,7 +314,7 @@ export class Repo {
     }
     private _loadConfig() {
         var jerkPath = path.join(this._root, '.jerk');
-        var json: string = nfs.readFileSync(path.join(jerkPath, 'config'), 'utf-8');
+        var json: string = nfs.readFileSync(path.join(jerkPath, 'config'), 'utf8');
         var config: {
             defaultBranchName: string,
             currentBranchName: string,
@@ -458,7 +458,7 @@ export class Repo {
     createCommit(previous: Commit, message: string = null,
         authorName: string = null, authorEMail: string = null, mergeOf: string = null): Commit {
         var ts: number = new Date().getTime();
-        var hash: string = createHash('sha256').update(message || ts, 'utf-8').digest('hex');
+        var hash: string = createHash('sha256').update(message || ts, 'utf8').digest('hex');
         var contents = new StringMap<TreeFile>();
         if (!!previous) {
             contents.copyFrom(previous['_contents']);

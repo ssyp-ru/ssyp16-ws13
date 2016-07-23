@@ -153,7 +153,7 @@ module FileSystem {
             this._hash = hash;
         }
         symlinkPath(): string {
-            return nfs.readFileSync(this.fullPath(), 'utf-8');
+            return nfs.readFileSync(this.fullPath(), 'utf8');
         }
         hash(): string {
             return this._hash;
@@ -186,12 +186,12 @@ module FileSystem {
         }
         create(blob: Buffer): FileObject {
             var hash = createHash('sha256').update(blob).digest('hex');
-            nfs.writeFileSync('.jerk/' + hash, blob, { mode: 0o655 });
+            nfs.writeFileSync('.jerk/' + hash, blob, { mode: 0o644 });
             return new FObject(hash);
         }
         symlink(path: string): SymlinkObject {
-            var hash = createHash('sha256').update(path, 'utf-8').digest('hex');
-            nfs.writeFileSync('.jerk/' + hash, path, { encoding: 'utf-8', mode: 0o655 });
+            var hash = createHash('sha256').update(path, 'utf8').digest('hex');
+            nfs.writeFileSync('.jerk/' + hash, path, { encoding: 'utf8', mode: 0o655 });
             return new SObject(hash);
         }
         remove(id: string): boolean {
