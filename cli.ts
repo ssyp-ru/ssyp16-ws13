@@ -9,6 +9,8 @@ import * as child_process from "child_process";
 import * as fs from "fs";
 import * as path from 'path';
 import * as Common from './common';
+import * as Format from './format';
+import * as Client from './client';
 import program = require('commander');
 var glob = require('glob');
 import * as Moment from 'moment';
@@ -24,105 +26,6 @@ function cwdRepo(): Common.Repo {
     return repo;
 }
 module CLI {
-    export function init(path: string, quiet: boolean = false) {
-        fs.stat(path, (err, stats) => {
-            if (!!err || !stats) {
-                fs.mkdirSync(path);
-            }
-            var repo = new Common.Repo(path, true, quiet);
-            if (!repo && !quiet) {
-                console.log("Repository initialization failed!")
-            }
-        });
-    }
-    export function status(repo: Common.Repo, quiet: boolean = false): {
-        modified: string[], added: string[], removed: string[],
-        modifiedStaged: string[], addedStaged: string[],
-        removedStaged: string[], anyNewChanges: boolean,
-        anyStagedChanges: boolean, anyChanges: boolean
-    } {
-        var commitID = repo.currentBranch.head;
-        var commit = !!commitID ? repo.commit(commitID) : null;
-        var ignore = ['.jerk', '.jerk/**/*'];
-        var all: string[] = glob.sync('**/*',
-            { dot: true, nodir: true, ignore: '{' + ignore.join() + '}' });
-        var modified: string[] = [];
-        var added: string[] = [];
-        var removed: string[] = [];
-        var modifiedStaged: string[] = [];
-        var addedStaged: string[] = [];
-        var removedStaged: string[] = [];
-        var index = repo.index;
-        var staged = repo.staged;
-        function push(v: string, mode: number) {
-            var isStaged = staged.indexOf(v) >= 0;
-            var arr: string[];
-            switch (mode) {
-                case 0:
-                    arr = isStaged ? modifiedStaged : modified;
-                    break;
-                case 1:
-                    arr = isStaged ? addedStaged : added;
-                    break;
-                case 2:
-                    arr = isStaged ? removedStaged : removed;
-                    break;
-                default:
-                    throw "Illegal state mode";
-            }
-            arr.push(v);
-        }
-        all.forEach(v => {
-            if (index.indexOf(v) >= 0) {
-                if (!commit) {
-                    push(v, 1);
-                } else {
-                    var tf = commit.file(v);
-                    if (!tf) {
-                        push(v, 1);
-                    } else {
-                        var stat: fs.Stats;
-                        try {
-                            stat = fs.lstatSync(v);
-                            if (!!stat) {
-                                if (tf.time < stat.ctime.getTime()) {
-                                    push(v, 0);
-                                }
-                            }
-                        } catch (e) {
-                            if (!quiet) console.log(colors.dim('JERK'), logSymbols.warning,
-                                'file "' + v + '" died in vain...');
-                        }
-                    }
-                }
-            } else {
-                repo.addToIndex(v);
-                push(v, 1);
-            }
-        });
-        index.forEach(v => {
-            if (all.indexOf(v) < 0) {
-                push(v, 2);
-            }
-        });
-        staged.forEach(v => {
-            if (all.indexOf(v) < 0) {
-                if (!quiet) console.log(colors.dim('JERK'), logSymbols.warning,
-                    'staged file "' + v + '" removed');
-                repo.unstage(v);
-            }
-        });
-        all = undefined;
-        var anyNewChanges = modified.length > 0 || added.length > 0 || removed.length > 0;
-        var anyStagedChanges = modifiedStaged.length > 0 || addedStaged.length > 0 || removedStaged.length > 0;
-        var anyChanges = anyNewChanges || anyStagedChanges;
-        return {
-            modified: modified, added: added, removed: removed,
-            modifiedStaged: modifiedStaged, addedStaged: addedStaged,
-            removedStaged: removedStaged, anyNewChanges: anyNewChanges,
-            anyStagedChanges: anyStagedChanges, anyChanges: anyChanges
-        }
-    }
 }
 program
     .version(colors.rainbow("WIP") + " build");
@@ -132,7 +35,7 @@ program
     .option('-q, --quiet', 'Only print error and warning messages, all other output will be suppressed.')
     .action((options) => {
         var q = !!options.quiet;
-        CLI.init(process.cwd(), q);
+        Client.init(process.cwd(), q);
     });
 program
     .command("clone <url>")
@@ -151,7 +54,7 @@ program
     .description('Show the repository status')
     .action(() => {
         var repo = cwdRepo();
-        var res = CLI.status(repo);
+        var res = Client.status(repo);
         var modified = res.modified;
         var modifiedStaged = res.modifiedStaged;
         var added = res.added;
@@ -191,7 +94,7 @@ program
     .action((files: string[], options: any) => {
         var repo = cwdRepo();
         if (options.all) {
-            var res = CLI.status(repo, true);
+            var res = Client.status(repo, true);
             var modified = res.modified;
             var modifiedStaged = res.modifiedStaged;
             var added = res.added;
@@ -242,7 +145,8 @@ program
         var commitID = repo.currentBranch.head;
         var commit = !!commitID ? repo.commit(commitID) : null;
         var newCommit = repo.createCommit(commit, message, authorName, authorEMail);
-        console.log(colors.dim('JERK'), logSymbols.success, formatCommitMessage(newCommit, '%Cyellow%h%Creset: %s'));
+        console.log(colors.dim('JERK'), logSymbols.success,
+            Format.formatCommitMessage(newCommit, '%Cyellow%h%Creset: %s'));
     });
 program
     .command('config <op> [args...]')
@@ -285,107 +189,6 @@ program
             }
         }
     });
-const onelineFormat = "%Cyellow%h%Creset %s";
-const onelineWideFormat = "%Cyellow%h%Creset %Cgreen(%an, %ar)%Creset %s";
-const shortFormat = "commit %Cyellow%h%Creset%nAuthor: %Cgreen%an%Creset%n%s";
-const mediumFormat = "commit %Cyellow%H%Creset%nAuthor: %Cgreen%an%Creset%nDate: %ad%n%b";
-const fullFormat = "commit %Cyellow%H%Creset%nAuthor: %Cgreen%an%Creset%nCommit: %Cgreen%cn%Creset%n%b";
-const fullerFormat = "commit %Cyellow%H%Creset%nAuthor: %Cgreen%an%Creset%nAuthorDate: %ad%nCommit: %Cgreen%cn%Creset%nCommitDate: %cd%n%b";
-function formatCommitMessage(commit: Common.Commit, format: string): string {
-    var message = "";
-    var special = false;
-    for (var i = 0; i < format.length; i++) {
-        var c = format[i];
-        if (c !== '%' && !special) {
-            message += c;
-            continue;
-        } else if (c !== '%' && special) {
-            if (c == 'C') {
-                // Color
-                function isNext(str: string): boolean {
-                    if (format.length - (i + 1) < str.length) return false;
-                    var strI = 0;
-                    for (var j = i + 1; j < format.length; j++) {
-                        if (format[j] != str[strI++]) return false;
-                        if (strI >= str.length) break;
-                    }
-                    i += str.length;
-                    return true;
-                }
-                var colorCodes = {
-                    black: 30,
-                    red: 31,
-                    green: 32,
-                    yellow: 33,
-                    blue: 34,
-                    magenta: 35,
-                    cyan: 36,
-                    white: 37,
-                    gray: 90,
-                    grey: 90
-                }
-                if (isNext('reset')) message += '\u001b[' + 39 + 'm'; else
-                    if (isNext('black')) message += '\u001b[' + colorCodes.black + 'm'; else
-                        if (isNext('red')) message += '\u001b[' + colorCodes.red + 'm'; else
-                            if (isNext('green')) message += '\u001b[' + colorCodes.green + 'm'; else
-                                if (isNext('yellow')) message += '\u001b[' + colorCodes.yellow + 'm'; else
-                                    if (isNext('blue')) message += '\u001b[' + colorCodes.blue + 'm'; else
-                                        if (isNext('magenta')) message += '\u001b[' + colorCodes.magenta + 'm'; else
-                                            if (isNext('cyan')) message += '\u001b[' + colorCodes.cyan + 'm'; else
-                                                if (isNext('white')) message += '\u001b[' + colorCodes.white + 'm'; else
-                                                    if (isNext('gray')) message += '\u001b[' + colorCodes.gray + 'm'; else
-                                                        if (isNext('grey')) message += '\u001b[' + colorCodes.grey + 'm';
-
-            } else if (c == 'H') {
-                // SHA
-                message += commit.id;
-            } else if (c == 'h') {
-                // SHA
-                message += commit.id.substring(0, 7);
-            } else if (c == 's') {
-                // Title
-                message += commit.message.split('\n').shift();
-            } else if (c == 'b') {
-                // Body
-                message += commit.message;
-            } else if (c == 'a') {
-                // Author
-                if (format[i + 1] == 'd') {
-                    message += Moment(new Date(commit.time)).format('DD-MM-YYYY HH:MM:SS');
-                } else if (format[i + 1] == 'n') {
-                    message += commit.authorName;
-                } else if (format[i + 1] == 'e') {
-                    message += commit.authorEMail;
-                } else if (format[i + 1] == 'r') {
-                    message += Moment(new Date(commit.time)).fromNow();
-                }
-                i++;
-            } else if (c == 'c') {
-                // Committer
-                if (format[i + 1] == 'd') {
-                    message += Moment(new Date(commit.time)).format('DD-MM-YYYY HH:MM:SS');
-                } else if (format[i + 1] == 'n') {
-                    message += commit.authorName;
-                } else if (format[i + 1] == 'e') {
-                    message += commit.authorEMail;
-                } else if (format[i + 1] == 'r') {
-                    message += Moment(new Date(commit.time)).fromNow();
-                }
-                i++;
-            } else if (c == 'n') {
-                // New line
-                message += '\n';
-            } else if (c == '%') {
-                // %
-                message += '%';
-            }
-            special = false;
-            continue;
-        }
-        special = true;
-    }
-    return message;
-}
 program
     .command('log')
     .description('Show commits log')
@@ -406,22 +209,22 @@ program
         } else {
             switch (format) {
                 case 'oneline':
-                    format = onelineFormat;
+                    format = Format.onelineFormat;
                     break;
                 case 'onelineWide':
-                    format = onelineWideFormat;
+                    format = Format.onelineWideFormat;
                     break;
                 case 'short':
-                    format = shortFormat;
+                    format = Format.shortFormat;
                     break;
                 case 'medium':
-                    format = mediumFormat;
+                    format = Format.mediumFormat;
                     break;
                 case 'full':
-                    format = fullFormat;
+                    format = Format.fullFormat;
                     break;
                 case 'fuller':
-                    format = fullerFormat;
+                    format = Format.fullerFormat;
                     break;
                 default:
                     break;
@@ -434,7 +237,7 @@ program
         while (!!commit) {
             var nextCommit = commit.parent;
             var isLastCommit = nextCommit == null;
-            var message = formatCommitMessage(commit, format);
+            var message = Format.formatCommitMessage(commit, format);
             if (graph) {
                 var lines = message.split('\n');
                 if (lines.length == 1) {
@@ -467,7 +270,14 @@ program
             if (x.name.startsWith('remote/') && !options.all) return;
             console.log(colors.yellow('*'), x.name);
         });
-    })
+    });
+program
+    .command('checkout')
+    .description('Checkout a branch, a tag or a specific commit to the working tree')
+    .option('-f, --force', 'Throw away local changes, if any.')
+    .action((options: any) => {
+        
+    });
 program.parse(process.argv);
 if (!process.argv.slice(2).length) {
     program.outputHelp();
