@@ -34,34 +34,12 @@ module CLI {
             }
         });
     }
-}
-program
-    .version(colors.rainbow("WIP") + " build");
-program
-    .command("init")
-    .description("Initialize new repo in current working directory")
-    .option('-q, --quiet', 'Only print error and warning messages, all other output will be suppressed.')
-    .action((options) => {
-        var q = !!options.quiet;
-        CLI.init(process.cwd(), q);
-    });
-program
-    .command("clone <url>")
-    .alias("cl")
-    .description("Clone local or remote repo")
-    .action((url) => {
-        console.log(url);
-        child_process.execFile("rsync", ['rsync://127.1:19246/git'], (err, stdout, stderr) => {
-            if (!!err) console.log(err);
-            if (!!stdout) console.log(stdout);
-            if (!!stderr) console.log(stderr);
-        });
-    });
-program
-    .command('status')
-    .description('Show the repository status')
-    .action(() => {
-        var repo = cwdRepo();
+    export function status(repo: Common.Repo, quiet: boolean = false): {
+        modified: string[], added: string[], removed: string[],
+        modifiedStaged: string[], addedStaged: string[],
+        removedStaged: string[], anyNewChanges: boolean,
+        anyStagedChanges: boolean, anyChanges: boolean
+    } {
         var commitID = repo.currentBranch.head;
         var commit = !!commitID ? repo.commit(commitID) : null;
         var ignore = ['.jerk', '.jerk/**/*'];
@@ -111,7 +89,7 @@ program
                                 }
                             }
                         } catch (e) {
-                            console.log(colors.dim('JERK'), logSymbols.warning,
+                            if (!quiet) console.log(colors.dim('JERK'), logSymbols.warning,
                                 'file "' + v + '" died in vain...');
                         }
                     }
@@ -127,7 +105,7 @@ program
         });
         staged.forEach(v => {
             if (all.indexOf(v) < 0) {
-                console.log(colors.dim('JERK'), logSymbols.warning,
+                if (!quiet) console.log(colors.dim('JERK'), logSymbols.warning,
                     'staged file "' + v + '" removed');
                 repo.unstage(v);
             }
@@ -136,6 +114,51 @@ program
         var anyNewChanges = modified.length > 0 || added.length > 0 || removed.length > 0;
         var anyStagedChanges = modifiedStaged.length > 0 || addedStaged.length > 0 || removedStaged.length > 0;
         var anyChanges = anyNewChanges || anyStagedChanges;
+        return {
+            modified: modified, added: added, removed: removed,
+            modifiedStaged: modifiedStaged, addedStaged: addedStaged,
+            removedStaged: removedStaged, anyNewChanges: anyNewChanges,
+            anyStagedChanges: anyStagedChanges, anyChanges: anyChanges
+        }
+    }
+}
+program
+    .version(colors.rainbow("WIP") + " build");
+program
+    .command("init")
+    .description("Initialize new repo in current working directory")
+    .option('-q, --quiet', 'Only print error and warning messages, all other output will be suppressed.')
+    .action((options) => {
+        var q = !!options.quiet;
+        CLI.init(process.cwd(), q);
+    });
+program
+    .command("clone <url>")
+    .alias("cl")
+    .description("Clone local or remote repo")
+    .action((url) => {
+        console.log(url);
+        child_process.execFile("rsync", ['rsync://127.1:19246/git'], (err, stdout, stderr) => {
+            if (!!err) console.log(err);
+            if (!!stdout) console.log(stdout);
+            if (!!stderr) console.log(stderr);
+        });
+    });
+program
+    .command('status')
+    .description('Show the repository status')
+    .action(() => {
+        var repo = cwdRepo();
+        var res = CLI.status(repo);
+        var modified = res.modified;
+        var modifiedStaged = res.modifiedStaged;
+        var added = res.added;
+        var addedStaged = res.addedStaged;
+        var removed = res.removed;
+        var removedStaged = res.removedStaged;
+        var anyChanges = res.anyChanges;
+        var anyNewChanges = res.anyNewChanges;
+        var anyStagedChanges = res.anyStagedChanges;
         var mod = 'not modified';
         if (anyChanges) {
             mod = 'modified';
@@ -160,10 +183,27 @@ program
         }
     });
 program
-    .command('add <files...>')
+    .command('add [files...]')
     .description('Stage files to be commited in the nearest future.')
-    .action((files: string[]) => {
+    .option('-A, --all', 'Add all available files to stage')
+    .action((files: string[], options: any) => {
         var repo = cwdRepo();
+        if (options.all) {
+            var res = CLI.status(repo, true);
+            var modified = res.modified;
+            var modifiedStaged = res.modifiedStaged;
+            var added = res.added;
+            var addedStaged = res.addedStaged;
+            var removed = res.removed;
+            var removedStaged = res.removedStaged;
+            var anyChanges = res.anyChanges;
+            var anyNewChanges = res.anyNewChanges;
+            var anyStagedChanges = res.anyStagedChanges;
+            modified.forEach(v => repo.stage(v));
+            added.forEach(v => repo.stage(v));
+            removed.forEach(v => repo.stage(v));
+            return;
+        }
         for (var i = 0; i < files.length; i++) {
             var file = files[i];
             try {
@@ -190,8 +230,8 @@ program
             console.log(colors.dim('JERK'), logSymbols.info, 'no changes to commit');
             return;
         }
-        var authorName = conf.get('authorName');
-        var authorEMail = conf.get('authorEMail');
+        var authorName: string = conf.get('authorName');
+        var authorEMail: string = conf.get('authorEMail');
         var noAuthor = !authorName || !authorEMail;
         if (noAuthor && !options.ignoreAuthor) {
             console.log(colors.dim('JERK'), logSymbols.error, 'either author name or email is not specified! Pass --ignoreAuthor option to bypass the check');
@@ -200,6 +240,65 @@ program
         var commitID = repo.currentBranch.head;
         var commit = !!commitID ? repo.commit(commitID) : null;
         repo.createCommit(commit, message, authorName, authorEMail);
+    });
+program
+    .command('config <op> [args...]')
+    .description('Configuration manager')
+    .action((op: string, args: string[]) => {
+        console.log(colors.dim('JERK'), 'Configuration Manager');
+        switch (op) {
+            case "list": {
+                console.log(colors.cyan('Global'), 'options:');
+                var allConf = Common.iterateStringKeyObject<any>(conf.all);
+                allConf.forEach(v => {
+                    if (!v.key.startsWith('repo_')) {
+                        console.log(v.key, "=", v.value);
+                    }
+                });
+                var repo = Common.cwdRepo();
+                if (!!repo) {
+                    var lc = conf.get('repo_' + repo.name);
+                    if (!!lc) {
+                        console.log(colors.cyan('Local repository'), 'options:');
+                        Common.iterateStringKeyObject<any>(lc).forEach(v => {
+                            console.log(v.key, "=", v.value);
+                        });
+                    }
+                }
+                break;
+            }
+            case "set": {
+                if (args.length < 2) {
+                    console.log(colors.dim('JERK'), logSymbols.error, 'Not enough arguments for set operation. You must specify both key and value to set.');
+                    return;
+                }
+                conf.set(args[0], args[1]);
+                console.log(args[0], '=', conf.get(args[0]));
+                break;
+            }
+            default: {
+                console.log(colors.dim('JERK'), logSymbols.error, 'unknown operation');
+                break;
+            }
+        }
+    });
+program
+    .command('log')
+    .description('Show commits log')
+    .option('-g, --graph', 'Output as commit graph')
+    .action((options: any) => {
+        var repo = cwdRepo();
+        console.log(colors.dim('JERK'), 'Commit Log');
+        var commitID = repo.currentBranch.head;
+        var commit = !!commitID ? repo.commit(commitID) : null;
+        if (!commit) {
+            console.log('No commits found.');
+            return;
+        }
+        while (!!commit) {
+            console.log(colors.yellow('*'), commit.message);
+            commit = commit.parent;
+        }
     });
 program.parse(process.argv);
 if (!process.argv.slice(2).length) {

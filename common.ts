@@ -10,7 +10,7 @@ import * as logSymbols from 'log-symbols';
 import * as colors from 'colors/safe';
 var parents = require('parents');
 var createHash = require('sha.js');
-abstract class Serializable {
+export abstract class Serializable {
     abstract data(): string[];
     toString(): string {
         return JSON.stringify(this.data());
@@ -210,7 +210,7 @@ export class Tag extends Ref {
         return val;
     }
 }
-function iterateStringKeyObject<T>(obj: Object): { key: string, value: T }[] {
+export function iterateStringKeyObject<T>(obj: Object): { key: string, value: T }[] {
     var res = [];
     for (var it in obj) {
         if (obj.hasOwnProperty(it)) {
@@ -219,10 +219,10 @@ function iterateStringKeyObject<T>(obj: Object): { key: string, value: T }[] {
     }
     return res;
 }
-function iterateSerializable(obj: Object): { key: string, value: string[] }[] {
+export function iterateSerializable(obj: Object): { key: string, value: string[] }[] {
     return iterateStringKeyObject<string[]>(obj);
 }
-class StringMap<T> {
+export class StringMap<T> {
     data: Object;
     constructor(data: Object = {}) {
         this.data = data;
@@ -310,7 +310,7 @@ export class Repo {
         });
         var json = JSON.stringify(config);
         // console.log(json);
-        nfs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o655 });
+        nfs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o644 });
     }
     private _loadConfig() {
         var jerkPath = path.join(this._root, '.jerk');
@@ -431,7 +431,7 @@ export class Repo {
      */
     get index(): string[] { return [].concat(this._index); }
     set index(paths: string[]) {
-    this._index = paths;
+        this._index = paths;
         this._saveConfig();
     }
     addToIndex(path: string) {
