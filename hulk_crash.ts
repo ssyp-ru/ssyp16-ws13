@@ -44,7 +44,7 @@ module Hulk {
         /**
          * Write patch file to string.
          */
-        dumpString(): string { throw "Not Implemented"; }
+        dumpString(): string { throw "Not Implemented"; } 
     }
     /**
      * Diff for a single file. Consists of one or more Hunks.
