@@ -47,19 +47,73 @@ module Hulk {
          * @param past file in the past
          * @param present file now
          */
-        constructor(past: fs.FileObject, present: fs.FileObject) { throw "Not Implemented"; }
+        private _hunks: Hunk[];
+        constructor(hunks: Hunk[]) {
+            this._hunks = hunks;
+        }
+        static diffFiles(past: fs.FileObject, present: fs.FileObject) {
+            var isHunk = false;
+            var isHunkEnd = false;
+            var num = 0;
+            var pastHank = new Buffer("");
+            var presentHank = new Buffer("");
+            var hunks: Hunk[] = [];
+            while ((past.size() > num) || (present.size() > num)) {
+                if (past.buffer()[num] === present.buffer()[num]) {
+                    if (isHunk) {
+                        isHunkEnd = true;
+                    }
+                    isHunk = false;
+                }
+                else {
+                    isHunk = true;
+                    pastHank.write(past.buffer[num]);
+                    presentHank.write(present.buffer[num]);
+                }
+                if (isHunkEnd) {
+                    hunks.push(new Hunk(pastHank, presentHank));
+                    isHunkEnd = false;
+                    pastHank = new Buffer("");
+                    presentHank = new Buffer("");
+                }
+                num++;
+            }
+            return new Diff(hunks);
+        }
         /**
          * List all hunks inside this Diff
          */
-        get hunks(): Hunk[] { throw "Not Implemented"; }
+        get hunks(): Hunk[] { return this._hunks; }
         /**
          * Append hunk to this Diff
          */
-        appendHunk(hunk: Hunk) { throw "Not Implemented"; }
+        appendHunk(hunk: Hunk) { this._hunks.push(hunk) }
         /**
          * Merge two diffs into single one.
          */
-        static merge(first: Diff, second: Diff): Diff | MergeConflict[] { throw "Not Implemented"; }
+        static merge(first: Diff, second: Diff): Diff | MergeConflict[] {
+            var merges: MergeConflict[] = [];
+            function between(x: number, a: number, b: number) {
+                return (x >= a) && (x <= b);
+            }
+            for (var i = 0; i < first._hunks.length; i++) {
+                for (var j = 0; j < second._hunks.length; j++) {
+                    let fHunk = first.hunks[i];
+                    let sHunk = second.hunks[j];
+                    let fStart = fHunk.offset;
+                    let fEnd = fHunk.offset + fHunk.past.length;
+                    let sStart = sHunk.offset;
+                    let sEnd = sHunk.offset + sHunk.past.length;
+                    if (between(sStart, fStart, fEnd) || between(sEnd, fStart, fEnd) || between(fStart, sStart, sEnd)) {
+                        merges.push(new MergeConflict(fHunk, sHunk));
+                    }
+                }
+            }
+            if (!!merges.length) {
+                return merges;
+            }
+            return new Diff(first._hunks.concat(second._hunks));
+        }
     }
 
     /**
@@ -70,15 +124,20 @@ module Hulk {
          * @param base the basement hunk used for merging;
          * @param conflicted the conflicted hunk;
          */
-        constructor(base: Hunk, conflicted: Hunk) { throw "Not Implemented"; }
+        private _base: Hunk;
+        private _conflicted: Hunk;
+        constructor(base: Hunk, conflicted: Hunk) {
+            this._base = base;
+            this._conflicted = conflicted;
+        }
         /**
          * The basement hunk used for merging.
          */
-        get base(): Hunk { throw "Not Implemented"; }
+        get base(): Hunk { return this._base }
         /**
          * The conflicted hunk.
          */
-        get conflicted(): Hunk { throw "Not Implemented"; }
+        get conflicted(): Hunk { return this._conflicted }
     }
 }
 export = Hulk;

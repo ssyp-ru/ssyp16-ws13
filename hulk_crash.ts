@@ -56,17 +56,16 @@ module Hulk {
          * @param present file now
          */
         private _hunks: Hunk[];
-        constructor(past: fs.FileObject, present: fs.FileObject, hunks?: Hunk[]) {
-            if (!!hunks) {
-                this._hunks = hunks;
-                return;
-            }
-            this._hunks = [];
+        constructor(hunks: Hunk[]) {
+            this._hunks = hunks;
+        }
+        static diffFiles(past: fs.FileObject, present: fs.FileObject) {
             var isHunk = false;
             var isHunkEnd = false;
             var num = 0;
-            var pastHank: Buffer;
-            var presentHank: Buffer;
+            var pastHank = new Buffer("");
+            var presentHank = new Buffer("");
+            var hunks: Hunk[] = [];
             while ((past.size() > num) || (present.size() > num)) {
                 if (past.buffer()[num] === present.buffer()[num]) {
                     if (isHunk) {
@@ -80,14 +79,14 @@ module Hulk {
                     presentHank.write(present.buffer[num]);
                 }
                 if (isHunkEnd) {
-                    this.appendHunk(new Hunk(pastHank, presentHank));
+                    hunks.push(new Hunk(pastHank, presentHank));
                     isHunkEnd = false;
                     pastHank = new Buffer("");
                     presentHank = new Buffer("");
                 }
                 num++;
             }
-            //throw "Not Implemented";
+            return new Diff(hunks);
         }
         /**
          * List all hunks inside this Diff
@@ -121,7 +120,7 @@ module Hulk {
             if (!!merges.length) {
                 return merges;
             }
-            return new Diff(null, null, first._hunks.concat(second._hunks));
+            return new Diff(first._hunks.concat(second._hunks));
         }
     }
 
