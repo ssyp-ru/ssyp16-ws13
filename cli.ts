@@ -7,6 +7,7 @@ import * as logSymbols from 'log-symbols';
 import * as colors from 'colors/safe';
 import * as child_process from "child_process";
 import * as fs from "fs";
+import * as fse from 'fs-extra';
 import * as path from 'path';
 import * as Common from './common';
 import * as Format from './format';
@@ -24,8 +25,6 @@ function cwdRepo(): Common.Repo {
         process.exit(1);
     }
     return repo;
-}
-module CLI {
 }
 program
     .version(colors.rainbow("WIP") + " build");
@@ -309,6 +308,76 @@ program
             console.log("You have entered 'detached HEAD' state. You can look around, make experimental changes" +
                 " and create new branch based on this commit to retain all changes you would like to make.\n" +
                 "You can NOT commit in detached HEAD state, but you can always create a new branch.");
+        }
+    });
+program
+    .command('rm [file...]')
+    .description('Remove files from the index, and optionally from the working tree too')
+    .option('-C, --cached', 'Leave working tree unchanged, only remove from the index')
+    .option('-D, --deleted', 'Remove locally deleted files from the index')
+    .action((file: string[], options: any) => {
+        let repo = cwdRepo();
+        let cached = !!options.cached;
+        let deleted = !!options.deleted;
+        if (deleted) {
+            let res = Client.status(repo);
+            file = res.removed.concat(res.removedStaged);
+        }
+        file.forEach(v => {
+            repo.unstage(v);
+            if (!cached) {
+                fse.remove(v, v => { });
+            }
+        });
+    });
+program
+    .command('reset [paths...]')
+    .description('Reset current HEAD to the specified state')
+    .option('-q, --quiet', 'Be quiet, do not print any notices')
+    .option('--soft', 'Only move HEAD to the specified target')
+    .option('--mixed', 'Reset index, but not the working tree (default)')
+    .option('--hard', 'Reset the index and the working tree')
+    .option('--merge', 'Revert failed merge attempt but keep any other local changes')
+    .action((paths: string[], options: any) => {
+        let repo = cwdRepo();
+        paths = paths || [];
+        var mode = 0;
+        if (paths.length == 0) mode = 2; else
+            if (paths.length == 1) {
+                if (options.soft || options.mixed || options.hard || options.merge) mode = 2;
+                else {
+                    var cm = repo.commit(paths[0]);
+                    if (!!cm) {
+                        mode = 2;
+                        targetCommit = cm;
+                    } else {
+                        mode = 1;
+                    }
+                }
+            } else {
+                mode = 1;
+            }
+        let quiet = !!options.quiet;
+        let givenCommit = paths.length > 0 ? repo.commit(paths[0]) : null;
+        var targetCommit = givenCommit || repo.lastCommit;
+        if (!!givenCommit) {
+            paths.shift();
+        }
+        if (mode == 1) {
+            if (!!givenCommit) {
+                console.log(colors.dim('JERK'), logSymbols.info, "Git-specific behavior");
+                console.log("You have specified commit to reset given index entries to. In JERK, index" +
+                    " entries do NOT relate to any commit, instead use " + colors.bold('jerk checkout') +
+                    " command to load file contents from the specified commit. Option ignored.");
+            }
+            Client.resetFirstMode(repo, paths, targetCommit, quiet);
+        } else {
+            let soft = !!options.soft;
+            var mixed = !!options.mixed;
+            let hard = !!options.hard;
+            let merge = !!options.merge;
+            if (!soft && !mixed && !hard && !merge) mixed = true;
+            Client.resetSecondMode(repo, soft, mixed, hard, merge, targetCommit, quiet);
         }
     });
 program.parse(process.argv);

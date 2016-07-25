@@ -334,6 +334,7 @@ export class Repo {
         });
         var json = JSON.stringify(config);
         nfs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o644 });
+        this.writeHEADCommitData();
     }
     private _loadConfig() {
         var jerkPath = path.join(this._root, '.jerk');
@@ -459,6 +460,7 @@ export class Repo {
      * Get commit by its ID
      */
     commit(id: string): Commit {
+        if (!id) return null;
         var short = id.length < 60;
         if (short) {
             var applicable = this._commits.iter().filter(v => v.key.startsWith(id));
@@ -500,26 +502,6 @@ export class Repo {
         if (i < 0) return;
         this._staged.splice(i, 1, ...[]);
         this._saveConfig();
-    }
-    /**
-     * File paths to track changes of
-     */
-    get index(): string[] { return [].concat(this._index); }
-    set index(paths: string[]) {
-        this._index = paths;
-        this._saveConfig();
-    }
-    addToIndex(path: string) {
-        if (this._index.indexOf(path) >= 0) return;
-        this._index.push(path);
-        this._saveConfig();
-    }
-    rmFromIndex(path: string) {
-        var i = this._index.indexOf(path);
-        if (i >= 0) {
-            this._index.splice(i, 1, ...[]);
-            this._saveConfig();
-        }
     }
     /**
      * Get absolute path of the root of this repo.
@@ -627,6 +609,17 @@ export class Repo {
         var lcID = this.lastCommitID;
         if (!lcID) return null;
         return this.commit(lcID);
+    }
+    writeHEADCommitData() {
+        var commit = this.lastCommit;
+        var jerkPath = path.join(this._root, '.jerk');
+        var json = JSON.stringify(commit.data());
+        nfs.writeFileSync(path.join(jerkPath, 'HEAD'), json, { mode: 0o644 });
+    }
+    writeORIG_HEADCommitData(commit: Commit) {
+        var jerkPath = path.join(this._root, '.jerk');
+        var json = JSON.stringify(commit.data());
+        nfs.writeFileSync(path.join(jerkPath, 'ORIG_HEAD'), json, { mode: 0o644 });
     }
 }
 class RemoteRepo extends Repo {

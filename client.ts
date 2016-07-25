@@ -2,6 +2,7 @@ import * as logSymbols from 'log-symbols';
 import * as colors from 'colors/safe';
 import * as child_process from "child_process";
 import * as fs from "fs";
+import * as fse from 'fs-extra';
 import * as path from 'path';
 import * as Common from './common';
 import * as Format from './format';
@@ -36,7 +37,6 @@ module Client {
         var modifiedStaged: string[] = [];
         var addedStaged: string[] = [];
         var removedStaged: string[] = [];
-        var index = repo.index;
         var staged = repo.staged;
         function push(v: string, mode: number) {
             var isStaged = staged.indexOf(v) >= 0;
@@ -47,7 +47,6 @@ module Client {
                     break;
                 case 1:
                     arr = isStaged ? addedStaged : added;
-                    repo.addToIndex(v);
                     break;
                 case 2:
                     arr = isStaged ? removedStaged : removed;
@@ -58,36 +57,32 @@ module Client {
             arr.push(v);
         }
         all.forEach(v => {
-            if (index.indexOf(v) >= 0) {
-                if (!commit) {
+            if (!commit) {
+                push(v, 1);
+            } else {
+                var tf = commit.file(v);
+                if (!tf) {
                     push(v, 1);
                 } else {
-                    var tf = commit.file(v);
-                    if (!tf) {
-                        push(v, 1);
-                    } else {
-                        var stat: fs.Stats;
-                        try {
-                            stat = fs.lstatSync(v);
-                            if (!!stat) {
-                                if (tf.time < stat.mtime.getTime()) {
-                                    push(v, 0);
-                                }
+                    var stat: fs.Stats;
+                    try {
+                        stat = fs.lstatSync(v);
+                        if (!!stat) {
+                            if (tf.time < stat.mtime.getTime()) {
+                                push(v, 0);
                             }
-                        } catch (e) {
-                            if (!quiet) console.log(colors.dim('JERK'), logSymbols.warning,
-                                'file "' + v + '" died in vain...');
                         }
+                    } catch (e) {
+                        if (!quiet) console.log(colors.dim('JERK'), logSymbols.warning,
+                            'file "' + v + '" died in vain...');
                     }
                 }
-            } else {
-                repo.addToIndex(v);
-                push(v, 1);
             }
         });
-        index.forEach(v => {
-            if (all.indexOf(v) < 0) {
-                push(v, 2);
+        commit.contents.forEach(v => {
+            let path = v.path;
+            if (all.indexOf(path) < 0) {
+                push(path, 2);
             }
         });
         staged.forEach(v => {
@@ -95,7 +90,6 @@ module Client {
                 if (!quiet) console.log(colors.dim('JERK'), logSymbols.warning,
                     'staged file "' + v + '" removed');
                 repo.unstage(v);
-                repo.rmFromIndex(v);
             }
         });
         all = undefined;
@@ -109,38 +103,38 @@ module Client {
             anyStagedChanges: anyStagedChanges, anyChanges: anyChanges
         }
     }
-    export function revertSingleWorkingTreeChange(repo: Common.Repo, path: string) {
-        var commit = repo.lastCommit;
+    export function checkoutFile(repo: Common.Repo, commit: Common.Commit = repo.lastCommit, path: string) {
         if (!commit) {
             fs.unlinkSync(path);
-            repo.rmFromIndex(path);
+            repo.unstage(path);
         } else {
-            var tf = commit.file(path);
+            let tf = commit.file(path);
             if (!tf) {
                 fs.unlinkSync(path);
-                repo.rmFromIndex(path);
+                repo.unstage(path);
             } else {
-                var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
-                var stat: fs.Stats;
-                try {
-                    stat = fs.lstatSync(path);
-                    if (!!stat) {
-                        if (tf.time != stat.mtime.getTime()) {
-                            fs.writeFileSync(path, fo.buffer(), { flag: 'w' });
-                            fs.utimesSync(path, new Date(tf.time), new Date(tf.time));
-                            repo.addToIndex(path);
-                        }
-                    } else {
-                        fs.writeFileSync(path, fo.buffer(), { flag: 'w' });
-                        fs.utimesSync(path, new Date(tf.time), new Date(tf.time));
-                        repo.addToIndex(path);
-                    }
-                } catch (e) {
+                return checkoutFileExtended(repo, commit, tf);
+            }
+        }
+    }
+    export function checkoutFileExtended(repo: Common.Repo, commit: Common.Commit = repo.lastCommit, tf: Common.TreeFile) {
+        let path = tf.path;
+        var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
+        var stat: fs.Stats;
+        try {
+            stat = fs.lstatSync(path);
+            if (!!stat) {
+                if (tf.time != stat.mtime.getTime()) {
                     fs.writeFileSync(path, fo.buffer(), { flag: 'w' });
                     fs.utimesSync(path, new Date(tf.time), new Date(tf.time));
-                    repo.addToIndex(path);
                 }
+            } else {
+                fs.writeFileSync(path, fo.buffer(), { flag: 'w' });
+                fs.utimesSync(path, new Date(tf.time), new Date(tf.time));
             }
+        } catch (e) {
+            fs.writeFileSync(path, fo.buffer(), { flag: 'w' });
+            fs.utimesSync(path, new Date(tf.time), new Date(tf.time));
         }
     }
     export function revertAllWorkingTreeChanges(repo: Common.Repo) {
@@ -161,65 +155,70 @@ module Client {
         modified.concat(modifiedStaged).forEach(v => {
             if (!commit) {
                 fs.unlinkSync(v);
-                repo.rmFromIndex(v);
             } else {
                 var tf = commit.file(v);
                 var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
                 fs.writeFileSync(v, fo.buffer(), { flag: 'w' });
                 fs.utimesSync(v, new Date(tf.time), new Date(tf.time));
-                repo.addToIndex(v);
+                repo.unstage(v);
             }
         });
         added.concat(addedStaged).forEach(v => {
             fs.unlinkSync(v);
-            repo.rmFromIndex(v);
+            repo.unstage(v);
         })
         removed.concat(removedStaged).forEach(v => {
             if (!commit) {
                 console.log(colors.dim('JERK'), logSymbols.error, 'unexpected file removal without HEAD commit');
                 return;
-            } else {
-                var tf = commit.file(v);
-                var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
-                fs.writeFileSync(v, fo.buffer(), { flag: 'w' });
-                fs.utimesSync(v, new Date(tf.time), new Date(tf.time));
-                repo.addToIndex(v);
             }
+            var tf = commit.file(v);
+            var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
+            fs.writeFileSync(v, fo.buffer(), { flag: 'w' });
+            fs.utimesSync(v, new Date(tf.time), new Date(tf.time));
         });
     }
     export function checkout(repo: Common.Repo, commit: Common.Commit, branch?: Common.Branch) {
         if (!!branch) {
             repo.currentBranchName = branch.name;
             repo.detachedHEADID = null;
-            revertAllWorkingTreeChanges(repo);
         } else {
             repo.currentBranchName = null;
             repo.detachedHEADID = commit.id;
-            revertAllWorkingTreeChanges(repo);
         }
+        revertAllWorkingTreeChanges(repo);
         commit.contents.forEach(v => {
-            var fo = repo.fs.resolveObjectByHash(v.hash).asFile();
-            var stat: fs.Stats;
-            try {
-                stat = fs.lstatSync(v.path);
-                if (!!stat) {
-                    if (v.time != stat.mtime.getTime()) {
-                        fs.writeFileSync(v.path, fo.buffer(), { flag: 'w' });
-                        fs.utimesSync(v.path, new Date(v.time), new Date(v.time));
-                        repo.addToIndex(v.path);
-                    }
-                } else {
-                    fs.writeFileSync(v.path, fo.buffer(), { flag: 'w' });
-                    fs.utimesSync(v.path, new Date(v.time), new Date(v.time));
-                    repo.addToIndex(v.path);
-                }
-            } catch (e) {
-                fs.writeFileSync(v.path, fo.buffer(), { flag: 'w' });
-                fs.utimesSync(v.path, new Date(v.time), new Date(v.time));
-                repo.addToIndex(v.path);
-            }
+            checkoutFileExtended(repo, commit, v);
         });
         revertAllWorkingTreeChanges(repo);
+    }
+    export function resetFirstMode(repo: Common.Repo,
+        paths: string[], targetCommit: Common.Commit, quiet: boolean = false) {
+        paths.forEach(v => {
+            repo.unstage(v);
+        });
+        // console.log('first', paths, targetCommit.id);
+    }
+    export function resetSecondMode(repo: Common.Repo,
+        soft: boolean = false, mixed: boolean = true, hard: boolean = false, merge: boolean = false,
+        targetCommit: Common.Commit, quiet: boolean = false
+    ) {
+        if (targetCommit.id != repo.lastCommitID) {
+            let oldHEADCommit = repo.lastCommit;
+            repo.writeORIG_HEADCommitData(oldHEADCommit);
+            repo.currentBranch.move(targetCommit.id);
+        }
+        if (!soft) {
+            repo.staged = [];
+        }
+        if (hard) {
+            revertAllWorkingTreeChanges(repo);
+            targetCommit.contents.forEach(v => {
+                checkoutFileExtended(repo, targetCommit, v);
+            });
+            revertAllWorkingTreeChanges(repo);
+        }
+        // console.log('second', soft, mixed, hard, merge, targetCommit.id);
     }
 }
 export = Client;
