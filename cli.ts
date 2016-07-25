@@ -146,9 +146,11 @@ program
     .option('--amend',
     'Replace the last commit with a new commit, retaining all changes made, commit time,' +
     ' optionally message and author.')
+    .option('--allow-empty', 'Bypass changes count check, allows you to create commits without changes')
     .action((message: string, options: any) => {
         let repo = cwdRepo();
-        if (repo.staged.length < 1) {
+        let allowEmpty = !!options.allowEmpty;
+        if (repo.staged.length < 1 && !allowEmpty) {
             info('no changes to commit');
             return;
         }
@@ -160,11 +162,11 @@ program
             return;
         }
         if (!!repo.detachedHEADID) {
-            error('You can not commit in detached HEAD state. Create new branch.');
+            error('you can not commit in detached HEAD state. Create new branch.');
             return;
         }
-        let option_c: string = options['reedit-message'];
-        let option_C: string = options['reuse-message'];
+        let option_c: string = options.reeditMessage;
+        let option_C: string = options.reuseMessage;
         let amend = !!options.amend;
         var oldCommitData: string[] = null;
 
@@ -420,6 +422,10 @@ program
         let quiet = !!options.quiet;
         let givenCommit = paths.length > 0 ? repo.commit(paths[0]) : null;
         var targetCommit = givenCommit || repo.lastCommit;
+        if (!targetCommit) {
+            error('no target commit found, working in an empty repository?');
+            return;
+        }
         if (!!givenCommit) {
             paths.shift();
         }

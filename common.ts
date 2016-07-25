@@ -231,6 +231,9 @@ export class StringMap<T> {
     constructor(data: Object = {}) {
         this.data = data;
     }
+    clear() {
+        this.data = {};
+    }
     put(key: string, val: T): T {
         var old = this.data[key];
         this.data[key] = val;
@@ -279,7 +282,6 @@ export class Repo {
     private _detachedHEAD: string;
     private _refs: StringMap<Ref>;
     private _commits: StringMap<Commit>;
-    private _index: string[];
     private _staged: string[];
     private _fs: fs.IFileSystem;
     /**
@@ -295,7 +297,6 @@ export class Repo {
         this._detachedHEAD = null;
         this._refs = new StringMap<Ref>();
         this._commits = new StringMap<Commit>();
-        this._index = [];
         this._staged = [];
         this._fs = fs.fs();
         if (!this.local) return;
@@ -324,7 +325,6 @@ export class Repo {
             detachedHEAD: this._detachedHEAD,
             refs: {},
             commits: {},
-            index: this._index,
             staged: this._staged
         };
         this._refs.iter().forEach(v => {
@@ -384,7 +384,6 @@ export class Repo {
                 data[8], JSON.parse(data[9]));
             this._commits.put(key, commit);
         });
-        this._index = config.index;
         this._staged = config.staged;
     }
     /**
@@ -551,11 +550,20 @@ export class Repo {
                 oldCommitData = previous.data();
             }
             previous = previous.parent;
+            if (!!this._currentBranchName) {
+                this.currentBranch.move(previous.id);
+            }
         }
         if (!!oldCommitData) {
             authorName = oldCommitData[3];
             authorEMail = oldCommitData[4];
             ts = parseInt(oldCommitData[6]);
+            iterateStringKeyObject(JSON.parse(oldCommitData[7])['data']).forEach(v => {
+                var path: string = v.value['path'];
+                if (this._staged.indexOf(path) < 0) {
+                    contents.put(path, new TreeFile(path, v.value['time'], v.value['hash']));
+                }
+            });
             let oldStaged: string[] = JSON.parse(oldCommitData[9]);
             oldStaged.forEach(v => this.stage(v));
         }
