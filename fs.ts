@@ -153,7 +153,7 @@ module FileSystem {
             this._hash = hash;
         }
         symlinkPath(): string {
-            return nfs.readFileSync(this.fullPath(), 'utf-8');
+            return nfs.readFileSync(this.fullPath(), 'utf8');
         }
         hash(): string {
             return this._hash;
@@ -191,6 +191,7 @@ module FileSystem {
         }
         symlink(path: string): SymlinkObject {
             var hash = createHash('sha256').update(path, 'utf8').digest('hex');
+            nfs.writeFileSync('.jerk/' + hash, path, { encoding: 'utf8', mode: 0o644 });
             nfs.writeFileSync('.jerk/' + hash + ".symlink", path, { encoding: 'utf8', mode: 0o644 });
             return new SObject(hash);
         }

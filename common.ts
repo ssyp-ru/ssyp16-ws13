@@ -10,7 +10,7 @@ import * as logSymbols from 'log-symbols';
 import * as colors from 'colors/safe';
 var parents = require('parents');
 var createHash = require('sha.js');
-abstract class Serializable {
+export abstract class Serializable {
     abstract data(): string[];
     toString(): string {
         return JSON.stringify(this.data());
@@ -61,7 +61,10 @@ export class Commit extends Serializable {
     get authorName(): string { return this._authorName; }
     get authorEMail(): string { return this._authorEMail; }
     get parentId(): string { return this._parentId; }
-    get parent(): Commit { return this._repo.commit(this._parentId); }
+    get parent(): Commit {
+        if (!this._parentId) return null;
+        return this._repo.commit(this._parentId);
+    }
     /**
      * UNIX timestamp of the time the commit was created
      */
@@ -210,7 +213,7 @@ export class Tag extends Ref {
         return val;
     }
 }
-function iterateStringKeyObject<T>(obj: Object): { key: string, value: T }[] {
+export function iterateStringKeyObject<T>(obj: Object): { key: string, value: T }[] {
     var res = [];
     for (var it in obj) {
         if (obj.hasOwnProperty(it)) {
@@ -219,10 +222,10 @@ function iterateStringKeyObject<T>(obj: Object): { key: string, value: T }[] {
     }
     return res;
 }
-function iterateSerializable(obj: Object): { key: string, value: string[] }[] {
+export function iterateSerializable(obj: Object): { key: string, value: string[] }[] {
     return iterateStringKeyObject<string[]>(obj);
 }
-class StringMap<T> {
+export class StringMap<T> {
     data: Object;
     constructor(data: Object = {}) {
         this.data = data;
@@ -243,6 +246,24 @@ class StringMap<T> {
     iter(): { key: string, value: T }[] {
         return iterateStringKeyObject<T>(this.data);
     }
+    iterKeys(): string[] {
+        var res: string[] = [];
+        for (var it in this.data) {
+            if (this.data.hasOwnProperty(it)) {
+                res.push(it);
+            }
+        }
+        return res;
+    }
+    iterValues(): T[] {
+        var res: T[] = [];
+        for (var it in this.data) {
+            if (this.data.hasOwnProperty(it)) {
+                res.push(this.data[it]);
+            }
+        }
+        return res;
+    }
     toString(): string {
         return JSON.stringify(this.data);
     }
@@ -254,6 +275,7 @@ export class Repo {
     private _root: string;
     private _defaultBranchName: string;
     private _currentBranchName: string;
+    private _detachedHEAD: string;
     private _refs: StringMap<Ref>;
     private _commits: StringMap<Commit>;
     private _index: string[];
@@ -269,6 +291,7 @@ export class Repo {
         this._root = rootPath;
         this._defaultBranchName = 'master';
         this._currentBranchName = 'master';
+        this._detachedHEAD = null;
         this._refs = new StringMap<Ref>();
         this._commits = new StringMap<Commit>();
         this._index = [];
@@ -297,6 +320,7 @@ export class Repo {
         var config = {
             defaultBranchName: this._defaultBranchName,
             currentBranchName: this._currentBranchName,
+            detachedHEAD: this._detachedHEAD,
             refs: {},
             commits: {},
             index: this._index,
@@ -309,15 +333,15 @@ export class Repo {
             config.commits[v.key] = v.value.data();
         });
         var json = JSON.stringify(config);
-        // console.log(json);
-        nfs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o655 });
+        nfs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o644 });
     }
     private _loadConfig() {
         var jerkPath = path.join(this._root, '.jerk');
-        var json: string = nfs.readFileSync(path.join(jerkPath, 'config'), 'utf-8');
+        var json: string = nfs.readFileSync(path.join(jerkPath, 'config'), 'utf8');
         var config: {
             defaultBranchName: string,
             currentBranchName: string,
+            detachedHEAD: string,
             refs: Object,
             commits: Object,
             index: string[],
@@ -325,6 +349,7 @@ export class Repo {
         } = JSON.parse(json);
         this._defaultBranchName = config.defaultBranchName;
         this._currentBranchName = config.currentBranchName;
+        this._detachedHEAD = config.detachedHEAD;
         this._refs = new StringMap<Ref>();
         this._commits = new StringMap<Commit>();
         iterateSerializable(config.refs).forEach(v => {
@@ -332,11 +357,11 @@ export class Repo {
             var data: string[] = v.value;
             var type = data[0];
             if (type === "Ref") {
-                this._refs.put(key, new Ref(data[2], data[0], parseInt(data[3])));
+                this._refs.put(key, new Ref(data[2], data[1], parseInt(data[3])));
             } else if (type === "Branch") {
-                this._refs.put(key, new Branch(data[2], data[0], parseInt(data[3])));
+                this._refs.put(key, new Branch(data[2], data[1], parseInt(data[3])));
             } else if (type == "Tag") {
-                this._refs.put(key, new Tag(data[2], data[0], parseInt(data[3])));
+                this._refs.put(key, new Tag(data[2], data[1], parseInt(data[3])));
             }
         });
         iterateSerializable(config.commits).forEach(v => {
@@ -348,7 +373,7 @@ export class Repo {
             //this._parentId, this._time.toString(), JSON.stringify(this._contents),
             //this._mergeOf, JSON.stringify(this._changed)]
             var contents = new StringMap<TreeFile>();
-            iterateStringKeyObject(JSON.parse(data[7])).forEach(v => {
+            iterateStringKeyObject(JSON.parse(data[7])['data']).forEach(v => {
                 var path: string = v.value['path'];
                 contents.put(path, new TreeFile(path, v.value['time'], v.value['hash']));
             });
@@ -359,7 +384,6 @@ export class Repo {
         });
         this._index = config.index;
         this._staged = config.staged;
-        // console.log(this);
     }
     /**
      * Default for this repo branch name. Checks branch name for existance.
@@ -367,32 +391,83 @@ export class Repo {
      */
     get defaultBranchName(): string { return this._defaultBranchName; }
     set defaultBranchName(name: string) {
+        if (!name) {
+            this._defaultBranchName = null;
+            this._saveConfig();
+            return;
+        }
         var branch = this.ref<Branch>(name);
         if (!branch) throw "Branch not found";
         this._defaultBranchName = name;
+        this._saveConfig();
     }
     /**
      * Get default for this repo branch.
      */
-    get defaultBranch(): Branch { return this.ref<Branch>(this._defaultBranchName); }
+    get defaultBranch(): Branch {
+        var name = this._defaultBranchName;
+        if (!name) return null;
+        return this.ref<Branch>(name);
+    }
     /**
      * Get or set current branch name. Checks branch name for existance.
      * @param name (optional) - if present, it sets current branch name to given value, returning old value.
      */
     get currentBranchName(): string { return this._currentBranchName; }
     set currentBranchName(name: string) {
+        if (!name) {
+            this._currentBranchName = null;
+            this._saveConfig();
+            return;
+        }
         var branch = this.ref<Branch>(name);
         if (!branch) throw "Branch not found";
         this._currentBranchName = name;
+        this._saveConfig();
     }
     /**
      * Get current branch.
      */
-    get currentBranch(): Branch { return this.ref<Branch>(this._defaultBranchName); }
+    get currentBranch(): Branch {
+        var name = this._currentBranchName;
+        if (!name) return null;
+        return this.ref<Branch>(name);
+    }
+    /**
+     * Detached HEAD commit id or null
+     */
+    get detachedHEADID(): string { return this._detachedHEAD; }
+    set detachedHEADID(id: string) {
+        if (!id) {
+            this._detachedHEAD = null;
+            this._saveConfig();
+            return;
+        }
+        var commit = this.commit(id);
+        if (!commit) throw "Commit not found";
+        this._detachedHEAD = id;
+        this._saveConfig();
+    }
+    /**
+     * Detached HEAD commit or null
+     */
+    get detachedHEAD(): Commit {
+        if (!this._detachedHEAD) return null;
+        return this.commit(this._detachedHEAD);
+    }
     /**
      * Get commit by its ID
      */
-    commit(id: string): Commit { return this._commits.get(id); }
+    commit(id: string): Commit {
+        var short = id.length < 60;
+        if (short) {
+            var applicable = this._commits.iter().filter(v => v.key.startsWith(id));
+            if (applicable.length == 0) return null;
+            if (applicable.length == 1) return applicable[0].value;
+            throw "Multiple commits found, use full commit notation"
+        }
+        return this._commits.get(id);
+    }
     /**
      * Get all commits in this repo.
      */
@@ -406,26 +481,45 @@ export class Repo {
     /**
      * List all refs of this repository
      */
-    refs<T extends Ref>(): T[] { return [].concat(this._refs); }
+    refs<T extends Ref>(): T[] { return this._refs.iterValues() as T[]; }
     /**
      * Staged file paths to commit
      */
     get staged(): string[] { return [].concat(this._staged); }
-    set staged(paths: string[]) { this._staged = paths; }
-    stage(path: string) { this._staged.push(path); }
+    set staged(paths: string[]) {
+        this._staged = paths;
+        this._saveConfig();
+    }
+    stage(path: string) {
+        if (this._staged.indexOf(path) >= 0) return;
+        this._staged.push(path);
+        this._saveConfig();
+    }
     unstage(path: string) {
         var i = this._staged.indexOf(path);
-        if (i >= 0) this._staged.splice(i, 1, ...[]);
+        if (i < 0) return;
+        this._staged.splice(i, 1, ...[]);
+        this._saveConfig();
     }
     /**
      * File paths to track changes of
      */
     get index(): string[] { return [].concat(this._index); }
-    set index(paths: string[]) { this._index = paths; }
-    addToIndex(path: string) { this._index.push(path); }
+    set index(paths: string[]) {
+        this._index = paths;
+        this._saveConfig();
+    }
+    addToIndex(path: string) {
+        if (this._index.indexOf(path) >= 0) return;
+        this._index.push(path);
+        this._saveConfig();
+    }
     rmFromIndex(path: string) {
         var i = this._index.indexOf(path);
-        if (i >= 0) this._index.splice(i, 1, ...[]);
+        if (i >= 0) {
+            this._index.splice(i, 1, ...[]);
+            this._saveConfig();
+        }
     }
     /**
      * Get absolute path of the root of this repo.
@@ -442,7 +536,7 @@ export class Repo {
     createCommit(previous: Commit, message: string = null,
         authorName: string = null, authorEMail: string = null, mergeOf: string = null): Commit {
         var ts: number = new Date().getTime();
-        var hash: string = createHash('sha256').update(message || ts, 'utf-8').digest('hex');
+        var hash: string = createHash('sha256').update(message || ts, 'utf8').digest('hex');
         var contents = new StringMap<TreeFile>();
         if (!!previous) {
             contents.copyFrom(previous['_contents']);
@@ -460,12 +554,16 @@ export class Repo {
             } else {
                 fo = foFound.asFile();
             }
-            contents.put(v, new TreeFile(v, stats.ctime.getTime(), fo.hash()));
+            contents.put(v, new TreeFile(v, stats.mtime.getTime(), fo.hash()));
         });
         var commit = new Commit(hash, this, !!previous ? previous.id : null,
             message, authorName, authorEMail, ts, contents, mergeOf, this.staged);
         this._commits.put(hash, commit);
         this._staged = [];
+        if (!!this._currentBranchName) {
+            this.currentBranch.move(hash);
+        }
+        this._saveConfig();
         return commit;
     }
     /**
@@ -474,6 +572,7 @@ export class Repo {
     createRef(ref: string): Ref {
         if (!Ref.validRefName(ref)) throw "Invalid ref name";
         var complex: boolean = ref.includes('~');
+        this._saveConfig();
         throw "Not Implemented";
     }
     /**
@@ -485,10 +584,11 @@ export class Repo {
             throw "Invalid branch name";
         }
         if (commit === undefined) {
-            commit = this.currentBranch.head;
+            var commitID = this.lastCommitID;
         }
         var branch = new Branch(commit, branchName);
         this._refs.put(branchName, branch);
+        this._saveConfig();
         return branch;
     }
     /**
@@ -499,8 +599,9 @@ export class Repo {
         if (tagName.includes('~')) {
             throw "Invalid tag name";
         }
-        var tag = new Tag(this.currentBranch.head, tagName);
+        var tag = new Tag(this.lastCommitID, tagName);
         this._refs.put(tagName, tag);
+        this._saveConfig();
         return tag;
     }
     /**
@@ -513,6 +614,20 @@ export class Repo {
     get local(): boolean {
         return true;
     }
+    /**
+     * Get cached FileSystem implementation
+     */
+    get fs(): fs.IFileSystem {
+        return this._fs;
+    }
+    get lastCommitID(): string {
+        return !!this.currentBranchName ? this.currentBranch.head : this.detachedHEADID;
+    }
+    get lastCommit(): Commit {
+        var lcID = this.lastCommitID;
+        if (!lcID) return null;
+        return this.commit(lcID);
+    }
 }
 class RemoteRepo extends Repo {
     constructor(rootPath: string, init: boolean = false, quiet: boolean = false) {
@@ -524,21 +639,22 @@ class RemoteRepo extends Repo {
 }
 export function cwdRepo(): Repo {
     let cwd = process.cwd();
-    var res: Repo;
-    function tryRepoDir(dir: string) {
+    function tryRepoDir(dir: string): Repo {
         var stats: nfs.Stats;
         try {
             stats = nfs.statSync(path.join(dir, '.jerk'));
         } catch (e) {
-            return;
+            return null;
         }
         if (!!stats) {
-            res = new Repo(dir);
+            return new Repo(dir);
         }
+        return null;
     }
-    var par: string[] = parents(cwd);
-    for (var i = 0; i < par.length; i++) {
-        tryRepoDir(par[i]);
+    var res: Repo;
+    var up = parents(cwd);
+    for (var i = 0; i < up.length; i++) {
+        res = tryRepoDir(up[i]);
         if (!!res) {
             return res;
         }
