@@ -20,11 +20,11 @@ module Hulk {
         private _past: Buffer;
         private _future: Buffer;
         private _offset: number;
-        constructor(past: Buffer, future: Buffer, offset: number = 0) { 
+        constructor(past: Buffer, future: Buffer, offset: number = 0) {
             this._past = past;
             this._future = future;
             this._offset = 0;
-         }
+        }
         /**
          * Expected Buffer to see past applying this hunk.
          */
@@ -36,7 +36,7 @@ module Hulk {
         /**
          * Byte offset from the beginning of file
          */
-        get offset(): number { return this._offset}
+        get offset(): number { return this._offset }
         /**
          * Apply this hunk to the current Buffer.
          */
@@ -44,7 +44,7 @@ module Hulk {
         /**
          * Write patch file to string.
          */
-        dumpString(): string { throw "Not Implemented"; } 
+        dumpString(): string { throw "Not Implemented"; }
     }
     /**
      * Diff for a single file. Consists of one or more Hunks.
@@ -55,14 +55,39 @@ module Hulk {
          * @param past file in the past
          * @param present file now
          */
-        private past: fs.FileObject;
-        private present: fs.FileObject;
         private _hunks: Hunk[];
-        constructor(past: fs.FileObject, present: fs.FileObject) { 
-            this.past = past;
-            this.present = present;
-            ///////////////////////////////////// _hunks = somesing
-            throw "Not Implemented";
+        constructor(past: fs.FileObject, present: fs.FileObject, hunks?: Hunk[]) {
+            if (!!hunks) {
+                this._hunks = hunks;
+                return;
+            }
+            this._hunks = [];
+            var isHunk = false;
+            var isHunkEnd = false;
+            var num = 0;
+            var pastHank: Buffer;
+            var presentHank: Buffer;
+            while ((past.size() > num) || (present.size() > num)) {
+                if (past.buffer()[num] === present.buffer()[num]) {
+                    if (isHunk) {
+                        isHunkEnd = true;
+                    }
+                    isHunk = false;
+                }
+                else {
+                    isHunk = true;
+                    pastHank.write(past.buffer[num]);
+                    presentHank.write(present.buffer[num]);
+                }
+                if (isHunkEnd) {
+                    this.appendHunk(new Hunk(pastHank, presentHank));
+                    isHunkEnd = false;
+                    pastHank = new Buffer("");
+                    presentHank = new Buffer("");
+                }
+                num++;
+            }
+            //throw "Not Implemented";
         }
         /**
          * List all hunks inside this Diff
@@ -75,7 +100,29 @@ module Hulk {
         /**
          * Merge two diffs into single one.
          */
-        static merge(first: Diff, second: Diff): Diff | MergeConflict[] { throw "Not Implemented"; }
+        static merge(first: Diff, second: Diff): Diff | MergeConflict[] {
+            var merges: MergeConflict[] = [];
+            function between(x: number, a: number, b: number) {
+                return (x >= a) && (x <= b);
+            }
+            for (var i = 0; i < first._hunks.length; i++) {
+                for (var j = 0; j < second._hunks.length; j++) {
+                    let fHunk = first.hunks[i];
+                    let sHunk = second.hunks[j];
+                    let fStart = fHunk.offset;
+                    let fEnd = fHunk.offset + fHunk.past.length;
+                    let sStart = sHunk.offset;
+                    let sEnd = sHunk.offset + sHunk.past.length;
+                    if (between(sStart, fStart, fEnd) || between(sEnd, fStart, fEnd) || between(fStart, sStart, sEnd)) {
+                        merges.push(new MergeConflict(fHunk, sHunk));
+                    }
+                }
+            }
+            if (!!merges.length) {
+                return merges;
+            }
+            return new Diff(null, null, first._hunks.concat(second._hunks));
+        }
     }
 
     /**
@@ -88,10 +135,10 @@ module Hulk {
          */
         private _base: Hunk;
         private _conflicted: Hunk;
-        constructor(base: Hunk, conflicted: Hunk) { 
+        constructor(base: Hunk, conflicted: Hunk) {
             this._base = base;
             this._conflicted = conflicted;
-         }
+        }
         /**
          * The basement hunk used for merging.
          */
