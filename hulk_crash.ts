@@ -5,6 +5,7 @@ import fs = require('./fs');
  *    hunk - a large piece of something, especially food, cut or broken off a larger piece
  * In SVN and JERK it is just a piece of file modified.
  * Patch consists of multiple hunks.
+ * Commit consists of multiple patches.
  */
 module Hulk {
     /**
@@ -12,23 +13,30 @@ module Hulk {
      */
     export class Hunk {
         /**
-         * @param past before applying this hunk
+         * @param past past applying this hunk
          * @param future after applying this hunk
          * @param offset bytes offset from the beginning of file
          */
-        constructor(past: Buffer, future: Buffer, offset: number = 0) { throw "Not Implemented"; }
+        private _past: Buffer;
+        private _future: Buffer;
+        private _offset: number;
+        constructor(past: Buffer, future: Buffer, offset: number = 0) {
+            this._past = past;
+            this._future = future;
+            this._offset = 0;
+        }
         /**
-         * Expected Buffer to see before applying this hunk.
+         * Expected Buffer to see past applying this hunk.
          */
-        get past(): Buffer { throw "Not Implemented"; }
+        get past(): Buffer { return this._past }
         /**
         * Expected Buffer to see after applying this hunk.
         */
-        get future(): Buffer { throw "Not Implemented"; }
+        get future(): Buffer { return this._future }
         /**
          * Byte offset from the beginning of file
          */
-        get offset(): number { throw "Not Implemented"; }
+        get offset(): number { return this._offset }
         /**
          * Apply this hunk to the current Buffer.
          */
