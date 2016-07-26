@@ -1,7 +1,4 @@
 #!/usr/bin/node
-/// <reference path="log-symbols.d.ts" />
-/// <reference path="colors.d.ts" />
-/// <reference path="configstore.d.ts" />
 import * as child_process from "child_process";
 import * as fs from "fs";
 import * as path from 'path';
@@ -9,7 +6,7 @@ import * as readline from 'readline';
 import * as logSymbols from 'log-symbols';
 import * as colors from 'colors/safe';
 import Configstore = require('configstore');
-import {error, warn, success, info, silence, header, log} from './log';
+import * as Logger from './log';
 var osenv = require('osenv');
 var mkdirp = require('mkdirp');
 var uuid = require('uuid');
@@ -17,9 +14,11 @@ var xdgBasedir = require('xdg-basedir');
 var osTmpdir = require('os-tmpdir');
 var writeFileAtomic = require('write-file-atomic');
 
-const conf = new Configstore('jerk-server');
 module Server {
-    const rl = readline.createInterface({
+    let log = new Logger.Logger();
+    let conf = new Configstore('jerk-server');
+
+    let rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
     });
@@ -31,18 +30,19 @@ module Server {
     var defaultPathMode = 0o755;
     var writeFileOptions = { mode: 0o644 };
 
-
     let repoPath = process.cwd();
     let repoName = repoPath.split(path.sep).pop();
 
     function repoConfig() {
         return 'use chroot = no\n\n[git]\n\tpath = ' + repoPath;
     }
+
     function configPath(): string {
         let pathPrefix = path.join('jerk-server', repoName);
         let confPath = path.join(configDir, pathPrefix);
         return confPath;
     }
+
     function installConfig() {
         let confPath = configPath();
         try {
@@ -64,8 +64,10 @@ module Server {
     var rsyncDaemon: child_process.ChildProcess;
 
     export function createRSYNCConfig() {
+        log.success("Starting JERK server...");
         installConfig();
     }
+
     export function startRSYNCDaemon() {
         var out = fs.openSync('./out.log', 'a');
         var err = fs.openSync('./err.log', 'a');
@@ -96,14 +98,13 @@ module Server {
     export function stop() {
         rl.pause();
         rl.close();
-        log();
-        info(`Killing rsync ${colors.red('daemon')}...`)
+        log.log();
+        log.info(`Killing rsync ${colors.red('daemon')}...`)
         rsyncDaemon.kill('SIGTERM');
-        info(colors.blue("Good night, sweetheart!"));
+        log.info(colors.blue("Good night, sweetheart!"));
         process.exit(0);
     }
 }
-success("Starting JERK server...");
 Server.createRSYNCConfig();
 Server.startRSYNCDaemon();
 Server.loopRSYNCDaemon();

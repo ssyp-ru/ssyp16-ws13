@@ -8,6 +8,29 @@ export let mediumFormat = "commit %Cyellow%H%Creset%nAuthor: %Cgreen%an%Creset%n
 export let fullFormat = "commit %Cyellow%H%Creset%nAuthor: %Cgreen%an%Creset%nCommit: %Cgreen%cn%Creset%n%b";
 export let fullerFormat = "commit %Cyellow%H%Creset%nAuthor: %Cgreen%an%Creset%nAuthorDate: %ad%nCommit: %Cgreen%cn%Creset%nCommitDate: %cd%n%b";
 
+export function decodeFormat(s: string): string {
+    if (s.startsWith('format=')) {
+        return s.substring(7);
+    } else {
+        switch (s) {
+            case 'oneline':
+                return onelineFormat;
+            case 'onelineWide':
+                return onelineWideFormat;
+            case 'short':
+                return shortFormat;
+            case 'medium':
+                return mediumFormat;
+            case 'full':
+                return fullFormat;
+            case 'fuller':
+                return fullerFormat;
+            default:
+                throw "Unknown format string";
+        }
+    }
+}
+
 let colorCodes = {
     black: 30,
     red: 31,
