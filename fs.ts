@@ -1,5 +1,6 @@
 import * as nfs from 'fs';
 import * as path from 'path';
+import * as fse from 'fs-extra';
 var createHash = require('sha.js');
 
 module FileSystem {
@@ -43,33 +44,30 @@ module FileSystem {
      * Represents a single object in file tree.
      * It is possible that a file/symlink represented by this object does not exist.
      */
-    export interface IFileSystemObject {
+    export abstract class IFileSystemObject {
+        constructor(private _hash: string, protected fs: FSImplementation) {
+        }
         /**
          * Returns object content hash.
          */
-        hash(): string;
-        /**
-         * Get parent node of the FS tree.
-         * Returns null if it is already root repo directory.
-         */
-        //////////////////////////////////////////////////////////////////////////////////////////////////////
-        // parent(): IFileSystemObject;
-        //////////////////////////////////////////////////////////////////////////////////////////////////////
+        hash(): string {
+            return this._hash;
+        }
         /**
          * Returns full path to the current IFileSystemObject.
          * Guaranteed to be absolute from the root repo path.
          */
-        fullPath(): string;
+        abstract fullPath(): string;
         /**
          * Returns true if this IFileSystemObject represents file.
          * Useful in case you just want to check type without actually casting IFileSystemObject to its type.
          */
-        isFile(): boolean;
+        abstract isFile(): boolean;
         /**
          * Returns true if this IFileSystemObject represents symlink.
          * Useful in case you just want to check type without actually casting IFileSystemObject to its type.
          */
-        isSymlink(): boolean;
+        abstract isSymlink(): boolean;
         /**
          * Returns this IFileSystemObject if this IFileSystemObject represents file, null otherwise.
          * Typical usecase:
@@ -81,7 +79,7 @@ module FileSystem {
          }
          ```
          */
-        asFile(): FileObject;
+        abstract asFile(): FileObject;
         /**
          * Returns this IFileSystemObject if this IFileSystemObject represents symlink, null otherwise.
          * Typical usecase:
@@ -93,33 +91,30 @@ module FileSystem {
          }
          ```     
          */
-        asSymlink(): SymlinkObject;
-
+        abstract asSymlink(): SymlinkObject;
     }
-    export interface FileObject extends
-        IFileSystemObject {
+    export abstract class FileObject extends IFileSystemObject {
         /**
          * Get byte Buffer file contents.
          */
-        buffer(): Buffer;
+        abstract buffer(): Buffer;
         /**
          * Returns size of this file.
          */
-        size(): number;
+        abstract size(): number;
     }
-    export interface SymlinkObject extends IFileSystemObject {
+    export abstract class SymlinkObject extends IFileSystemObject {
         /**
          * Returns path of the node this symlink is pointing to.
          * It is not guaranteed that it will be absolute path from the root repo path.
          * To resolve path use IFileSystem#resolveObjectRelativeTo.
          */
-        symlinkPath(): string;
+        abstract symlinkPath(): string;
     }
 
-    class FObject implements FileObject {
-        private _hash: string;
-        constructor(hash: string) {
-            this._hash = hash;
+    class FObject extends FileObject {
+        constructor(_hash: string, fs: FSImplementation) {
+            super(_hash, fs);
         }
         buffer(): Buffer {
             return nfs.readFileSync(this.fullPath());
@@ -127,11 +122,8 @@ module FileSystem {
         size(): number {
             return this.buffer().length;
         }
-        hash(): string {
-            return this._hash;
-        }
         fullPath(): string {
-            return '.jerk/' + this._hash;
+            return path.join(this.fs.root, this.hash());
         }
         isFile(): boolean {
             return true;
@@ -147,19 +139,15 @@ module FileSystem {
         }
     }
 
-    class SObject implements SymlinkObject {
-        private _hash: string;
-        constructor(hash: string) {
-            this._hash = hash;
+    class SObject extends SymlinkObject {
+        constructor(_hash: string, fs: FSImplementation) {
+            super(_hash, fs);
         }
         symlinkPath(): string {
             return nfs.readFileSync(this.fullPath(), 'utf8');
         }
-        hash(): string {
-            return this._hash;
-        }
         fullPath(): string {
-            return '.jerk/' + this._hash + '.symlink';
+            return path.join(this.fs.root, this.hash() + '.symlink');
         }
         isFile(): boolean {
             return false;
@@ -175,6 +163,10 @@ module FileSystem {
         }
     }
     class FSImplementation implements IFileSystem {
+        constructor(public server: boolean = false) {
+            fse.ensureDirSync(path.join(this.root));
+        }
+        get root(): string { return path.join(this.server ? '.' : '.jerk', 'objects'); }
         resolveObjectByHash(hash: string): IFileSystemObject {
             return this.resolveHash(hash);
         }
@@ -182,18 +174,17 @@ module FileSystem {
             return this.resolveHash(createHash('sha256').update(contents).digest('hex'));
         }
         entries(): IFileSystemObject[] {
-            return nfs.readdirSync('.jerk').filter(v => v.length > 60).map(v => this.resolveHash(v));
+            return nfs.readdirSync(this.root).filter(v => v.length > 60).map(v => this.resolveHash(v));
         }
         create(blob: Buffer): FileObject {
             var hash = createHash('sha256').update(blob).digest('hex');
-            nfs.writeFileSync('.jerk/' + hash, blob, { mode: 0o644 });
-            return new FObject(hash);
+            nfs.writeFileSync(path.join(this.root, hash), blob, { mode: 0o644 });
+            return new FObject(hash, this);
         }
-        symlink(path: string): SymlinkObject {
-            var hash = createHash('sha256').update(path, 'utf8').digest('hex');
-            nfs.writeFileSync('.jerk/' + hash, path, { encoding: 'utf8', mode: 0o644 });
-            nfs.writeFileSync('.jerk/' + hash + ".symlink", path, { encoding: 'utf8', mode: 0o644 });
-            return new SObject(hash);
+        symlink(target: string): SymlinkObject {
+            var hash = createHash('sha256').update(target, 'utf8').digest('hex');
+            nfs.writeFileSync(path.join(this.root, hash + ".symlink"), target, { encoding: 'utf8', mode: 0o644 });
+            return new SObject(hash, this);
         }
         remove(id: string): boolean {
             var o = this.resolveHash(id);
@@ -206,12 +197,12 @@ module FileSystem {
         }
         private resolveHash(hash: string): IFileSystemObject {
             try {
-                var stat = nfs.statSync('.jerk/' + hash)
-                return new FObject(hash);
+                var stat = nfs.statSync(path.join(this.root, hash))
+                return new FObject(hash, this);
             } catch (e) {
                 try {
-                    var lstat = nfs.lstatSync('.jerk/' + hash + '.symlink');
-                    return new SObject(hash);
+                    var lstat = nfs.lstatSync(path.join(this.root, hash + '.symlink'));
+                    return new SObject(hash, this);
                 } catch (e1) {
                     return null;
                 }
@@ -224,6 +215,6 @@ module FileSystem {
      * It is possible that multiple instances of IFileSystem can exist at the same time.
      * But it is not recommended for obvious implementation reasons.
      */
-    export function fs(): IFileSystem { return new FSImplementation(); }
+    export function fs(server: boolean = false): IFileSystem { return new FSImplementation(server); }
 }
 export = FileSystem;

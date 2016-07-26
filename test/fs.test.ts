@@ -1,15 +1,16 @@
 import * as FSFunctions from '../fsFunctions';
 import * as FS from '../fs';
 import * as assert from 'assert';
+import * as path from 'path';
 var createHash = require('sha.js');
 var nfs = new FSFunctions.FSFunctions();
 
 describe("File System", () => {
     before(() => {
         try {
-            var stat = nfs.statSync('.jerk');
+            var stat = nfs.stat('.jerk');
         } catch (e) {
-            nfs.mkdirSync('.jerk', 0o755);
+            nfs.mkdir('.jerk', 0o755);
         }
     });
 
@@ -19,13 +20,13 @@ describe("File System", () => {
             var bf1 = new Buffer("Hello");
             var firstFileObject = fs.create(bf1);
             var firstHash = createHash('sha256').update(bf1).digest('hex');
-            nfs.writeFileSync('.jerk/' + firstHash, bf1, 0o644);
-            assert.deepEqual(nfs.readFileSync('.jerk/' + firstHash, 'utf8'), bf1.toString());
+            nfs.writeFile(path.join('.jerk', 'objects', firstHash), bf1, 0o644);
+            assert.deepEqual(nfs.readFile(path.join('.jerk', 'objects', firstHash), 'utf8'), bf1.toString());
             /*var bf2 = new Buffer("World");
             var secondFileObject = fs.create(bf2);
             var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFileSync('.jerk/' + secondHash, bf2, 0o644);
-            assert.deepEqual(nfs.readFileSync('.jerk/' + secondHash, 'utf8'), secondFileObject);*/
+            nfs.writeFile(path.join('.jerk', secondHash, bf2, 0o644);
+            assert.deepEqual(nfs.readFile(path.join('.jerk', secondHash, 'utf8'), secondFileObject);*/
         });
 
         it(".symlink", () => {
@@ -33,13 +34,13 @@ describe("File System", () => {
             var path1 = "Hello";
             var firstSymlinkObject = fs.symlink(path1);
             var firstHash = createHash('sha256').update(path1).digest('hex');
-            nfs.writeFileSync('.jerk/' + firstHash, path1, 0o644);
-            assert.deepEqual(nfs.readFileSync('.jerk/' + firstHash, 'utf8'), path1);
+            nfs.writeFile(path.join('.jerk', 'objects', firstHash + '.symlink'), path1, 0o644);
+            assert.deepEqual(nfs.readFile(path.join('.jerk', 'objects', firstHash), 'utf8'), path1);
             /*var path2 = new String("World");
             var secondFileSymlink = fs.symlink(path2);
             var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFileSync('.jerk/' + secondHash, path2, 0o644);
-            assert.deepEqual(nfs.readFileSync('.jerk/' + secondHash, 'utf8'), secondSymlinkObject);*/
+            nfs.writeFile(path.join('.jerk', secondHash, path2, 0o644);
+            assert.deepEqual(nfs.readFile(path.join('.jerk', secondHash, 'utf8'), secondSymlinkObject);*/
         });
 
 
@@ -48,13 +49,13 @@ describe("File System", () => {
             var bf1 = new Buffer("Hello");
             var firstFileObject = fs.create(bf1);
             var firstHash = createHash('sha256').update(bf1).digest('hex');
-            nfs.writeFileSync('.jerk/' + firstHash, bf1, 0o644);
+            nfs.writeFile(path.join('.jerk', 'objects', firstHash), bf1, 0o644);
             assert.deepEqual(fs.resolveObjectByHash(firstHash), firstFileObject);
             /*var bf2 = new Buffer("World");
             var secondFileObject = fs.create(bf2);
             var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFileSync('.jerk/' + secondHash, bf2, 0o644);
-            assert.deepEqual(nfs.readFileSync('.jerk/' + secondHash, 'utf8'), fs.resolveObjectByHash(secondHash));*/
+            nfs.writeFile(path.join('.jerk', secondHash, bf2, 0o644);
+            assert.deepEqual(nfs.readFile(path.join('.jerk', secondHash, 'utf8'), fs.resolveObjectByHash(secondHash));*/
         });
 
         it(".resolveObjectByContents", () => {
@@ -62,13 +63,13 @@ describe("File System", () => {
             var bf1 = new Buffer("Hello");
             var firstFileObject = fs.create(bf1);
             var firstHash = createHash('sha256').update(bf1).digest('hex');
-            nfs.writeFileSync('.jerk/' + firstHash, bf1, 0o644);
+            nfs.writeFile(path.join('.jerk', 'objects', firstHash), bf1, 0o644);
             assert.deepEqual(fs.resolveObjectByContents(bf1), firstFileObject);
             /*var bf2 = new Buffer("World");
             var secondFileObject = fs.create(bf2);
             var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFileSync('.jerk/' + secondHash, bf2, 0o644);
-            assert.deepEqual(nfs.readFileSync('.jerk/' + secondHash, 'utf8'), fs.resolveObjectByContents(bf2));*/
+            nfs.writeFile(path.join('.jerk', secondHash, bf2, 0o644);
+            assert.deepEqual(nfs.readFile(path.join('.jerk', secondHash, 'utf8'), fs.resolveObjectByContents(bf2));*/
         });
 
         it(".entries", () => {
@@ -76,12 +77,12 @@ describe("File System", () => {
             var bf1 = new Buffer("Hello");
             var firstFileObject = fs.create(bf1);
             var firstHash = createHash('sha256').update(bf1).digest('hex');
-            nfs.writeFileSync('.jerk/' + firstHash, bf1, 0o644);
+            nfs.writeFile(path.join('.jerk', 'objects', firstHash), bf1, 0o644);
             var bf2 = new Buffer("World");
             var secondFileObject = fs.create(bf2);
             var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFileSync('.jerk/' + secondHash, bf2, 0o644);
-            assert.deepEqual(nfs.readdirSync('.jerk'), fs.entries());
+            nfs.writeFile(path.join('.jerk', 'objects', secondHash), bf2, 0o644);
+            assert.deepEqual(nfs.readdir(path.join('.jerk', 'objects')), fs.entries());
         });
 
         it(".remove", () => {
@@ -93,11 +94,11 @@ describe("File System", () => {
             var secondFileObject = fs.create(bf2);
             var secondHash = createHash('sha256').update(bf2).digest('hex');
             /*assert.doesNotThrow(() => fs.remove(firstHash));
-            assert.deepEqual(nfs.readFileSync('.jerk/' + firstHash, 'utf8'), undefined);
-            assert.deepEqual(nfs.readFileSync('.jerk/' + secondHash, 'utf8'), secondFileObject);
+            assert.deepEqual(nfs.readFile(path.join('.jerk', firstHash, 'utf8'), undefined);
+            assert.deepEqual(nfs.readFile(path.join('.jerk', secondHash, 'utf8'), secondFileObject);
             assert.throws(() => fs.remove(firstHash), /err/);*/
             assert.equal(fs.remove(firstHash), true);
-            assert.deepEqual(nfs.readFileSync('.jerk/' + secondHash, 'utf8'), bf2.toString());
+            assert.deepEqual(nfs.readFile(path.join('.jerk', 'objects', secondHash), 'utf8'), bf2.toString());
         });
     });
 
@@ -117,7 +118,7 @@ describe("File System", () => {
             var hash = createHash('sha256').update(bf1).digest('hex');
             assert.deepEqual(bf1.length, fileObject.size());
         });
-        
+
         it(".symlinkPath", () => {
             var fs = FS.fs();
             var path1 = "Hello";
@@ -139,7 +140,7 @@ describe("File System", () => {
             var bf1 = new Buffer("Hello");
             var fileObject = fs.create(bf1);
             var hash = createHash('sha256').update(bf1).digest('hex');
-            assert.deepEqual('.jerk/' + hash, fileObject.fullPath());
+            assert.deepEqual(path.join('.jerk', 'objects', hash), fileObject.fullPath());
         });
 
         it(".isFile", () => {

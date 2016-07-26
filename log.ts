@@ -1,41 +1,41 @@
-/// <reference path="log-symbols.d.ts" />
-/// <reference path="colors.d.ts" />
 import * as logSymbols from 'log-symbols';
 import * as colors from 'colors/safe';
 
 let name = colors.dim('JERK');
-var _quiet = false;
+export class Logger {
+    private _quiet = false;
 
-export function silence() {
-    _quiet = true;
-}
+    silence() {
+        this._quiet = true;
+    }
 
-export function quiet(v: boolean) {
-    _quiet = v;
-}
+    quiet(v: boolean) {
+        this._quiet = v;
+    }
 
-export function error(...args: any[]) {
-    log(...[name, logSymbols.error].concat(args));
-}
+    error(...args: any[]) {
+        this.log(...[name, logSymbols.error].concat(args));
+    }
 
-export function warn(...args: any[]) {
-    log(...[name, logSymbols.warning].concat(args));
-}
+    warn(...args: any[]) {
+        this.log(...[name, logSymbols.warning].concat(args));
+    }
 
-export function success(...args: any[]) {
-    if (_quiet) return;
-    log(...[name, logSymbols.success].concat(args));
-}
+    success(...args: any[]) {
+        if (this._quiet) return;
+        this.log(...[name, logSymbols.success].concat(args));
+    }
 
-export function info(...args: any[]) {
-    if (_quiet) return;
-    log(...[name, logSymbols.info].concat(args));
-}
+    info(...args: any[]) {
+        if (this._quiet) return;
+        this.log(...[name, logSymbols.info].concat(args));
+    }
 
-export function header(header: string) {
-    log(name, header);
-}
+    header(header: string) {
+        this.log(name, header);
+    }
 
-export function log(...args: any[]) {
-    console.log(args.join(' '));
+    log(...args: any[]) {
+        console.log(args.join(' '));
+    }
 }
