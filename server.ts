@@ -7,50 +7,48 @@ import * as logSymbols from 'log-symbols';
 import * as colors from 'colors/safe';
 import Configstore = require('configstore');
 import * as Logger from './log';
-var osenv = require('osenv');
-var mkdirp = require('mkdirp');
-var uuid = require('uuid');
-var xdgBasedir = require('xdg-basedir');
-var osTmpdir = require('os-tmpdir');
-var writeFileAtomic = require('write-file-atomic');
+let osenv = require('osenv');
+let mkdirp = require('mkdirp');
+let uuid = require('uuid');
+let xdgBasedir = require('xdg-basedir');
+let osTmpdir = require('os-tmpdir');
+let writeFileAtomic = require('write-file-atomic');
 
 module Server {
+    // Initialize major subsystems
     let log = new Logger.Logger();
     let conf = new Configstore('jerk-server');
 
+    // Create command line prompt
     let rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
     });
-
     rl.setPrompt(colors.green("JERK => "));
 
-    var user = (osenv.user() || uuid.v4()).replace(/\\/g, '');
-    var configDir = xdgBasedir.config || path.join(osTmpdir(), user, '.config');
-    var defaultPathMode = 0o755;
-    var writeFileOptions = { mode: 0o644 };
+    // Configstore options
+    let user = (osenv.user() || uuid.v4()).replace(/\\/g, '');
+    let configDir = xdgBasedir.config || path.join(osTmpdir(), user, '.config');
+    let defaultPathMode = 0o755;
+    let writeFileOptions = { mode: 0o644 };
 
+    // Current host repo properties
     let repoPath = process.cwd();
     let repoName = repoPath.split(path.sep).pop();
+    let repoConfig = 'use chroot = no\n\n[git]\n\tpath = ' + repoPath;
+    let configPath = path.join(configDir, 'jerk-server', repoName);
 
-    function repoConfig() {
-        return 'use chroot = no\n\n[git]\n\tpath = ' + repoPath;
-    }
+    // rsync daemon process handle
+    var rsyncDaemon: child_process.ChildProcess;
 
-    function configPath(): string {
-        let pathPrefix = path.join('jerk-server', repoName);
-        let confPath = path.join(configDir, pathPrefix);
-        return confPath;
-    }
-
-    function installConfig() {
-        let confPath = configPath();
+    export function createRSYNCConfig() {
+        log.success("Starting JERK server...");
         try {
             // make sure the folder exists as it
             // could have been deleted in the meantime
-            mkdirp.sync(path.dirname(confPath), defaultPathMode);
+            mkdirp.sync(path.dirname(configPath), defaultPathMode);
 
-            writeFileAtomic.sync(confPath, repoConfig(), writeFileOptions);
+            writeFileAtomic.sync(configPath, repoConfig, writeFileOptions);
         } catch (err) {
             // improve the message of permission errors
             if (err.code === 'EACCES') {
@@ -61,18 +59,11 @@ module Server {
         }
     }
 
-    var rsyncDaemon: child_process.ChildProcess;
-
-    export function createRSYNCConfig() {
-        log.success("Starting JERK server...");
-        installConfig();
-    }
-
     export function startRSYNCDaemon() {
         var out = fs.openSync('./out.log', 'a');
         var err = fs.openSync('./err.log', 'a');
         rsyncDaemon = child_process.spawn('rsync',
-            ['--daemon', '-v', '--port=19246', '--config="' + configPath() + '"'],
+            ['--daemon', '-v', '--port=19246', '--config="' + configPath + '"'],
             {
                 detached: true,
                 stdio: ['ignore', out, err]
@@ -92,7 +83,9 @@ module Server {
                 }
             }
             rl.prompt();
-        }).on('SIGINT', stop).on('SIGTERM', stop);
+        })
+            .on('SIGINT', stop)
+            .on('SIGTERM', stop);
     }
 
     export function stop() {
@@ -105,6 +98,8 @@ module Server {
         process.exit(0);
     }
 }
+
+// Execute server startup and loop sequence
 Server.createRSYNCConfig();
 Server.startRSYNCDaemon();
 Server.loopRSYNCDaemon();
