@@ -20,29 +20,6 @@ describe("Hulk module", () => {
         });
 
         it("get hunks", () => {
-            // Вообще не нужно:
-            
-            // var fs = FS.fs();
-            // var bf1 = new Buffer("Hello, Artyom! Jerk commit!");
-            // var firstFileObject = fs.create(bf1);
-            // var firstHash = createHash('sha256').update(bf1).digest('hex');
-            // nfs.writeFile('.jerk/' + firstHash, bf1, { mode: 0o644 });
-            // var bf2 = new Buffer("Hello, World! Jerk push!");
-            // var secondFileObject = fs.create(bf1);
-            // var secondHash = createHash('sha256').update(bf2).digest('hex');
-            // nfs.writeFile('.jerk/' + secondHash, bf2, { mode: 0o644 });
-            
-            // Длинная версия:
-            var hunks: HunkExp.Hunk[] = [];
-            var words: Buffer[] = [];
-            words[0] = new Buffer("Artyom");
-            words[1] = new Buffer("World");
-            words[2] = new Buffer("commit");
-            words[3] = new Buffer("push");
-            hunks.push(new HunkExp.Hunk(words[0], words[1]));
-            hunks.push(new HunkExp.Hunk(words[2], words[3]));
-            var diff = new HunkExp.Diff(hunks);
-            assert.deepEqual(hunks, diff.hunks);
 
             // Короткая версия -- лучший вариант.
             var h = new HunkExp.Hunk(new Buffer("a\nb\nc\n"), new Buffer("a\ne\nb\nc\n"));
@@ -52,15 +29,6 @@ describe("Hulk module", () => {
         });
 
         it(".appendHunk", () => {
-            var fs = FS.fs();
-            var bf1 = new Buffer("Hello, Artyom! Jerk commit!");
-            var firstFileObject = fs.create(bf1);
-            var firstHash = createHash('sha256').update(bf1).digest('hex');
-            nfs.writeFile('.jerk/' + firstHash, bf1, { mode: 0o644 });
-            var bf2 = new Buffer("Hello, World! Jerk push!");
-            var secondFileObject = fs.create(bf1);
-            var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFile('.jerk/' + secondHash, bf2, { mode: 0o644 });
             var hunks: HunkExp.Hunk[] = [];
             var words: Buffer[] = [];
             words[0] = new Buffer("Artyom");
@@ -74,7 +42,7 @@ describe("Hulk module", () => {
         });
 
         it(".diffFiles", () => {
-            var fs = FS.fs();
+            //var fs = FS.fs();
             var bf1 = new Buffer("Hello, Artyom! Jerk commit!");
             var firstFileObject = fs.create(bf1);
             var firstHash = createHash('sha256').update(bf1).digest('hex');

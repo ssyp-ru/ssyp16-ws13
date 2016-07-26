@@ -122,7 +122,7 @@ module FileSystem {
             return this.buffer().length;
         }
         fullPath(): string {
-            return path.join(this.fs.root, this.hash);
+            return path.join(this.fs.root, this.hash());
         }
         isFile(): boolean {
             return true;
@@ -146,7 +146,7 @@ module FileSystem {
             return nfs.readFileSync(this.fullPath(), 'utf8');
         }
         fullPath(): string {
-            return path.join(this.fs.root, this.hash + '.symlink');
+            return path.join(this.fs.root, this.hash() + '.symlink');
         }
         isFile(): boolean {
             return false;
@@ -179,9 +179,8 @@ module FileSystem {
             return new FObject(hash, this);
         }
         symlink(target: string): SymlinkObject {
-            var hash = createHash('sha256').update(path, 'utf8').digest('hex');
-            nfs.writeFileSync(path.join(this.root, hash), path, { encoding: 'utf8', mode: 0o644 });
-            nfs.writeFileSync(path.join(this.root, hash + ".symlink"), path, { encoding: 'utf8', mode: 0o644 });
+            var hash = createHash('sha256').update(target, 'utf8').digest('hex');
+            nfs.writeFileSync(path.join(this.root, hash + ".symlink"), target, { encoding: 'utf8', mode: 0o644 });
             return new SObject(hash, this);
         }
         remove(id: string): boolean {
