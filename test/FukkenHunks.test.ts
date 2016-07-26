@@ -13,16 +13,26 @@ describe("Hulk module", () => {
             nfs.mkdir('.jerk', 0o755);
         }*/
     describe("Class Diff", () => {
+        var fs: FS.IFileSystem;
+        
+        beforeEach(() => {
+            fs = FS.fs()
+        });
+
         it("get hunks", () => {
-            var fs = FS.fs();
-            var bf1 = new Buffer("Hello, Artyom! Jerk commit!");
-            var firstFileObject = fs.create(bf1);
-            var firstHash = createHash('sha256').update(bf1).digest('hex');
-            nfs.writeFile('.jerk/' + firstHash, bf1, { mode: 0o644 });
-            var bf2 = new Buffer("Hello, World! Jerk push!");
-            var secondFileObject = fs.create(bf1);
-            var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFile('.jerk/' + secondHash, bf2, { mode: 0o644 });
+            // Вообще не нужно:
+            
+            // var fs = FS.fs();
+            // var bf1 = new Buffer("Hello, Artyom! Jerk commit!");
+            // var firstFileObject = fs.create(bf1);
+            // var firstHash = createHash('sha256').update(bf1).digest('hex');
+            // nfs.writeFile('.jerk/' + firstHash, bf1, { mode: 0o644 });
+            // var bf2 = new Buffer("Hello, World! Jerk push!");
+            // var secondFileObject = fs.create(bf1);
+            // var secondHash = createHash('sha256').update(bf2).digest('hex');
+            // nfs.writeFile('.jerk/' + secondHash, bf2, { mode: 0o644 });
+            
+            // Длинная версия:
             var hunks: HunkExp.Hunk[] = [];
             var words: Buffer[] = [];
             words[0] = new Buffer("Artyom");
@@ -33,6 +43,12 @@ describe("Hulk module", () => {
             hunks.push(new HunkExp.Hunk(words[2], words[3]));
             var diff = new HunkExp.Diff(hunks);
             assert.deepEqual(hunks, diff.hunks);
+
+            // Короткая версия -- лучший вариант.
+            var h = new HunkExp.Hunk(new Buffer("a\nb\nc\n"), new Buffer("a\ne\nb\nc\n"));
+            var d = new HunkExp.Diff([ h ]);
+
+            assert.deepEqual(d.hunks, [h]);
         });
 
         it(".appendHunk", () => {
@@ -80,28 +96,42 @@ describe("Hulk module", () => {
         });
 
         it(".merge", () => {
-            var fs = FS.fs();
-            var bf1 = new Buffer("Hello, Artyom! Jerk commit!");
-            var firstFileObject = fs.create(bf1);
-            var firstHash = createHash('sha256').update(bf1).digest('hex');
-            nfs.writeFile('.jerk/' + firstHash, bf1, { mode: 0o644 });
-            var bf2 = new Buffer("Hello, World! Jerk push!");
-            var secondFileObject = fs.create(bf1);
-            var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFile('.jerk/' + secondHash, bf2, { mode: 0o644 });
-            var hunks: HunkExp.Hunk[] = [];
-            var Diff1 = HunkExp.Diff.diffFiles(firstFileObject, secondFileObject);
-            var Diff2 = HunkExp.Diff.diffFiles(firstFileObject, secondFileObject);
-            var words: Buffer[] = [];
-            words[0] = new Buffer("Artyom");
-            words[1] = new Buffer("World");
-            words[2] = new Buffer("commit");
-            words[3] = new Buffer("push");
-            var conflicts: HunkExp.MergeConflict[] = [];
-            conflicts.push(new HunkExp.MergeConflict(Diff1.hunks[0], Diff2.hunks[0]));
-            conflicts.push(new HunkExp.MergeConflict(Diff1.hunks[1], Diff2.hunks[1]));
-            assert.equal(typeof(HunkExp.Diff.merge(Diff1, Diff2)), typeof(conflicts));
-            assert.deepEqual(HunkExp.Diff.merge(Diff1, Diff2)[0], Diff1.hunks[0]);
+
+        /*
+            first = a,b,c
+            second = a,c,b,c
+            third = a,b,c,d
+
+            f -> s: a, +c, b, c
+            f -> t: a, b, c, +d
+        */
+
+
+            var genFo = str => ({ size: () =>  str.length, buffer: () => new Buffer(str) })
+
+            var first = genFo("a\nb\nc\n"), second = genFo("a\nc\nb\nc\n"), third = genFo("a\nb\nc\nd\n"); 
+            
+            var d1 = HunkExp.Diff.diffFiles(<any>first, <any>second);
+            var d2 = HunkExp.Diff.diffFiles(<any>first, <any>third);
+            
+            var res = HunkExp.Diff.merge(d1, d2);
+
+            assert.ok(res instanceof HunkExp.Diff);
+
+
+
+            // var Diff1 = HunkExp.Diff.diffFiles(firstFileObject, secondFileObject);
+            // var Diff2 = HunkExp.Diff.diffFiles(firstFileObject, secondFileObject);
+            // // var words: Buffer[] = [];
+            // // words[0] = new Buffer("Artyom");
+            // // words[1] = new Buffer("World");
+            // // words[2] = new Buffer("commit");
+            // // words[3] = new Buffer("push");
+            // var conflicts: HunkExp.MergeConflict[] = [];
+            // conflicts.push(new HunkExp.MergeConflict(Diff1.hunks[0], Diff2.hunks[0]));
+            // conflicts.push(new HunkExp.MergeConflict(Diff1.hunks[1], Diff2.hunks[1]));
+            // assert.equal(typeof(HunkExp.Diff.merge(Diff1, Diff2)), typeof(conflicts));
+            // assert.deepEqual(HunkExp.Diff.merge(Diff1, Diff2)[0], Diff1.hunks[0]);
         });
     });
 });
