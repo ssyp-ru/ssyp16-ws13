@@ -12,7 +12,8 @@ import program = require('commander');
 import * as glob from 'glob';
 import * as Moment from 'moment';
 import Configstore = require('configstore');
-const conf = new Configstore('jerk');
+
+let conf = new Configstore('jerk');
 
 let commitConfigOptionDescription = 'Create new commit based on previously written out old commit' +
     ` (e.g. with ${colors.bold('pull')}, ${colors.bold('merge')} ` +
