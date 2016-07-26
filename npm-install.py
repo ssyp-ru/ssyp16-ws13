@@ -10,17 +10,17 @@ def available(name, request, shift):
     if not pathlib.Path(pdir).exists():
         print(shift+"Dependency dir not found")
         return False
-    versions = ""
+    versions = []
     count = 0
     last = None
     for i in pathlib.Path(pdir).iterdir():
-        versions += i.name
-        versions += "; "
+        versions.append(i.name)
         count += 1
         last = i.name
     if count <= 1:
         return last
-    versions = versions[:-2]
+    versions = sorted(versions)
+    versions = '; '.join(versions)
     print(shift+"[" + name + "] Requested: "+request)
     while True:
         ver = input(shift+versions+' :=> ')

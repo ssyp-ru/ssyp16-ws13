@@ -34,7 +34,7 @@ describe("Hulk module", () => {
             var diff = new HunkExp.Diff(hunks);
             assert.deepEqual(hunks, diff.hunks);
         });
-        
+
         it(".appendHunk", () => {
             var fs = FS.fs();
             var bf1 = new Buffer("Hello, Artyom! Jerk commit!");

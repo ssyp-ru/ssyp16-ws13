@@ -9,7 +9,7 @@ import * as readline from 'readline';
 import * as logSymbols from 'log-symbols';
 import * as colors from 'colors/safe';
 import Configstore = require('configstore');
-
+import {error, warn, success, info, silence, header, log} from './log';
 var osenv = require('osenv');
 var mkdirp = require('mkdirp');
 var uuid = require('uuid');
@@ -96,14 +96,14 @@ module Server {
     export function stop() {
         rl.pause();
         rl.close();
-        console.log();
-        console.log("Killing rsync " + colors.red('daemon') + "...")
+        log();
+        info(`Killing rsync ${colors.red('daemon')}...`)
         rsyncDaemon.kill('SIGTERM');
-        console.log(colors.blue("Good night, sweetheart!"));
+        info(colors.blue("Good night, sweetheart!"));
         process.exit(0);
     }
 }
-console.log("Starting JERK server...");
+success("Starting JERK server...");
 Server.createRSYNCConfig();
 Server.startRSYNCDaemon();
 Server.loopRSYNCDaemon();

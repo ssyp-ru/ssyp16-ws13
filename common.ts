@@ -7,6 +7,7 @@ import * as nfs from 'fs';
 import * as path from 'path';
 import fs = require('./fs');
 import * as logSymbols from 'log-symbols';
+import {error, warn, success, info, silence, header, log} from './log';
 import * as colors from 'colors/safe';
 var parents = require('parents');
 var createHash = require('sha.js');
@@ -230,6 +231,9 @@ export class StringMap<T> {
     constructor(data: Object = {}) {
         this.data = data;
     }
+    clear() {
+        this.data = {};
+    }
     put(key: string, val: T): T {
         var old = this.data[key];
         this.data[key] = val;
@@ -278,7 +282,6 @@ export class Repo {
     private _detachedHEAD: string;
     private _refs: StringMap<Ref>;
     private _commits: StringMap<Commit>;
-    private _index: string[];
     private _staged: string[];
     private _fs: fs.IFileSystem;
     /**
@@ -294,7 +297,6 @@ export class Repo {
         this._detachedHEAD = null;
         this._refs = new StringMap<Ref>();
         this._commits = new StringMap<Commit>();
-        this._index = [];
         this._staged = [];
         this._fs = fs.fs();
         if (!this.local) return;
@@ -309,13 +311,13 @@ export class Repo {
             }
             nfs.mkdirSync(jerkPath, 0o755);
             this.createBranch('master', null);
-            this._saveConfig();
-            if (!quiet) console.log(colors.dim('JERK'), logSymbols.success, "repository created successfully!");
+            this.saveConfig();
+            success("repository created successfully!");
             return;
         }
         this._loadConfig();
     }
-    private _saveConfig() {
+    saveConfig() {
         var jerkPath = path.join(this._root, '.jerk');
         var config = {
             defaultBranchName: this._defaultBranchName,
@@ -323,7 +325,6 @@ export class Repo {
             detachedHEAD: this._detachedHEAD,
             refs: {},
             commits: {},
-            index: this._index,
             staged: this._staged
         };
         this._refs.iter().forEach(v => {
@@ -334,6 +335,7 @@ export class Repo {
         });
         var json = JSON.stringify(config);
         nfs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o644 });
+        this.writeHEADCommitData();
     }
     private _loadConfig() {
         var jerkPath = path.join(this._root, '.jerk');
@@ -382,7 +384,6 @@ export class Repo {
                 data[8], JSON.parse(data[9]));
             this._commits.put(key, commit);
         });
-        this._index = config.index;
         this._staged = config.staged;
     }
     /**
@@ -393,13 +394,13 @@ export class Repo {
     set defaultBranchName(name: string) {
         if (!name) {
             this._defaultBranchName = null;
-            this._saveConfig();
+            this.saveConfig();
             return;
         }
         var branch = this.ref<Branch>(name);
         if (!branch) throw "Branch not found";
         this._defaultBranchName = name;
-        this._saveConfig();
+        this.saveConfig();
     }
     /**
      * Get default for this repo branch.
@@ -417,13 +418,13 @@ export class Repo {
     set currentBranchName(name: string) {
         if (!name) {
             this._currentBranchName = null;
-            this._saveConfig();
+            this.saveConfig();
             return;
         }
         var branch = this.ref<Branch>(name);
         if (!branch) throw "Branch not found";
         this._currentBranchName = name;
-        this._saveConfig();
+        this.saveConfig();
     }
     /**
      * Get current branch.
@@ -440,13 +441,13 @@ export class Repo {
     set detachedHEADID(id: string) {
         if (!id) {
             this._detachedHEAD = null;
-            this._saveConfig();
+            this.saveConfig();
             return;
         }
         var commit = this.commit(id);
         if (!commit) throw "Commit not found";
         this._detachedHEAD = id;
-        this._saveConfig();
+        this.saveConfig();
     }
     /**
      * Detached HEAD commit or null
@@ -459,6 +460,7 @@ export class Repo {
      * Get commit by its ID
      */
     commit(id: string): Commit {
+        if (!id) return null;
         var short = id.length < 60;
         if (short) {
             var applicable = this._commits.iter().filter(v => v.key.startsWith(id));
@@ -488,38 +490,18 @@ export class Repo {
     get staged(): string[] { return [].concat(this._staged); }
     set staged(paths: string[]) {
         this._staged = paths;
-        this._saveConfig();
+        this.saveConfig();
     }
     stage(path: string) {
         if (this._staged.indexOf(path) >= 0) return;
         this._staged.push(path);
-        this._saveConfig();
+        this.saveConfig();
     }
     unstage(path: string) {
         var i = this._staged.indexOf(path);
         if (i < 0) return;
         this._staged.splice(i, 1, ...[]);
-        this._saveConfig();
-    }
-    /**
-     * File paths to track changes of
-     */
-    get index(): string[] { return [].concat(this._index); }
-    set index(paths: string[]) {
-        this._index = paths;
-        this._saveConfig();
-    }
-    addToIndex(path: string) {
-        if (this._index.indexOf(path) >= 0) return;
-        this._index.push(path);
-        this._saveConfig();
-    }
-    rmFromIndex(path: string) {
-        var i = this._index.indexOf(path);
-        if (i >= 0) {
-            this._index.splice(i, 1, ...[]);
-            this._saveConfig();
-        }
+        this.saveConfig();
     }
     /**
      * Get absolute path of the root of this repo.
@@ -532,14 +514,21 @@ export class Repo {
     /**
      * Move all staged files to commit and create new commit instance.
      * @param previous the commit to base on or null if it is first commit in bare branch or repo
+     * @param amend amend previous commit instead of creating absolutely different one
+     * @param oldCommitData previous commit to base on
      */
     createCommit(previous: Commit, message: string = null,
-        authorName: string = null, authorEMail: string = null, mergeOf: string = null): Commit {
+        authorName: string = null, authorEMail: string = null,
+        amend: boolean = false, oldCommitData: string[] = null,
+        mergeOf: string = null): Commit {
         var ts: number = new Date().getTime();
         var hash: string = createHash('sha256').update(message || ts, 'utf8').digest('hex');
         var contents = new StringMap<TreeFile>();
         if (!!previous) {
             contents.copyFrom(previous['_contents']);
+        } else if (amend) {
+            error('amending without parent commit');
+            return null;
         }
         this._staged.forEach(v => {
             var stats = nfs.statSync(v);
@@ -549,13 +538,35 @@ export class Repo {
             if (!foFound) {
                 fo = this._fs.create(buf);
             } else if (foFound.isSymlink()) {
-                console.error(logSymbols.warning, 'hash collision between file and symlink detected!');
+                error('hash collision between file and symlink detected!');
                 throw "Hash collision";
             } else {
                 fo = foFound.asFile();
             }
             contents.put(v, new TreeFile(v, stats.mtime.getTime(), fo.hash()));
         });
+        if (amend) {
+            if (!oldCommitData) {
+                oldCommitData = previous.data();
+            }
+            previous = previous.parent;
+            if (!!this._currentBranchName) {
+                this.currentBranch.move(previous.id);
+            }
+        }
+        if (!!oldCommitData) {
+            authorName = oldCommitData[3];
+            authorEMail = oldCommitData[4];
+            ts = parseInt(oldCommitData[6]);
+            iterateStringKeyObject(JSON.parse(oldCommitData[7])['data']).forEach(v => {
+                var path: string = v.value['path'];
+                if (this._staged.indexOf(path) < 0) {
+                    contents.put(path, new TreeFile(path, v.value['time'], v.value['hash']));
+                }
+            });
+            let oldStaged: string[] = JSON.parse(oldCommitData[9]);
+            oldStaged.forEach(v => this.stage(v));
+        }
         var commit = new Commit(hash, this, !!previous ? previous.id : null,
             message, authorName, authorEMail, ts, contents, mergeOf, this.staged);
         this._commits.put(hash, commit);
@@ -563,7 +574,7 @@ export class Repo {
         if (!!this._currentBranchName) {
             this.currentBranch.move(hash);
         }
-        this._saveConfig();
+        this.saveConfig();
         return commit;
     }
     /**
@@ -572,7 +583,7 @@ export class Repo {
     createRef(ref: string): Ref {
         if (!Ref.validRefName(ref)) throw "Invalid ref name";
         var complex: boolean = ref.includes('~');
-        this._saveConfig();
+        this.saveConfig();
         throw "Not Implemented";
     }
     /**
@@ -588,7 +599,7 @@ export class Repo {
         }
         var branch = new Branch(commit, branchName);
         this._refs.put(branchName, branch);
-        this._saveConfig();
+        this.saveConfig();
         return branch;
     }
     /**
@@ -601,7 +612,7 @@ export class Repo {
         }
         var tag = new Tag(this.lastCommitID, tagName);
         this._refs.put(tagName, tag);
-        this._saveConfig();
+        this.saveConfig();
         return tag;
     }
     /**
@@ -627,6 +638,19 @@ export class Repo {
         var lcID = this.lastCommitID;
         if (!lcID) return null;
         return this.commit(lcID);
+    }
+    writeHEADCommitData() {
+        var commit = this.lastCommit;
+        if (!commit) return;
+        var jerkPath = path.join(this._root, '.jerk');
+        var json = JSON.stringify(commit.data());
+        nfs.writeFileSync(path.join(jerkPath, 'HEAD'), json, { mode: 0o644 });
+    }
+    writeORIG_HEADCommitData(commit: Commit) {
+        if (!commit) return;
+        var jerkPath = path.join(this._root, '.jerk');
+        var json = JSON.stringify(commit.data());
+        nfs.writeFileSync(path.join(jerkPath, 'ORIG_HEAD'), json, { mode: 0o644 });
     }
 }
 class RemoteRepo extends Repo {
