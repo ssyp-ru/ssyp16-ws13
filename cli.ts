@@ -20,6 +20,7 @@ let commitConfigOptionDescription = 'Create new commit based on previously writt
 let resetCommitGivenHint = "You have specified commit to reset given index entries to. In JERK, index" +
     ` entries do NOT relate to any commit, instead use "${colors.bold('jerk checkout')}` +
     " command to load file contents from the specified commit. Option ignored.";
+let quietDescription = 'Be quiet, only print warnings and errors, any other output will be suppressed.';
 
 module CLI {
     let log = new Logger.Logger();
@@ -40,6 +41,8 @@ module CLI {
     }
 
     export function clone(url: string, options: any) {
+        if (!!options.quiet) log.silence();
+
         log.log(url);
         child_process.execFile("rsync", ['rsync://127.1:19246/git'], (err, stdout, stderr) => {
             if (!!err) log.log(err);
@@ -49,6 +52,7 @@ module CLI {
     }
 
     export function status(options: any) {
+        if (!!options.quiet) log.silence();
         var repo = cwdRepo();
         var res = Client.status(repo);
 
@@ -77,6 +81,7 @@ module CLI {
     }
 
     export function add(files: string[], options: any) {
+        if (!!options.quiet) log.silence();
         var repo = cwdRepo();
 
         if (options.all) {
@@ -104,6 +109,7 @@ module CLI {
     }
 
     export function commit(message: string, options: any) {
+        if (!!options.quiet) log.silence();
         let repo = cwdRepo();
 
         let allowEmpty = !!options.allowEmpty;
@@ -205,6 +211,7 @@ module CLI {
     }
 
     export function commitLog(options: any) {
+        if (!!options.quiet) log.silence();
         var repo = cwdRepo();
         log.header('Commit Log');
 
@@ -254,6 +261,7 @@ module CLI {
     }
 
     export function branch(name: string, options: any) {
+        if (!!options.quiet) log.silence();
         var repo = cwdRepo();
 
         if (!name) {
@@ -277,6 +285,7 @@ module CLI {
     }
 
     export function checkout(what: string, options: any) {
+        if (!!options.quiet) log.silence();
         var repo = cwdRepo();
 
         var commit = repo.commit(what);
@@ -302,6 +311,7 @@ module CLI {
     }
 
     export function rm(file: string[], options: any) {
+        if (!!options.quiet) log.silence();
         let repo = cwdRepo();
 
         let cached = !!options.cached;
@@ -384,24 +394,27 @@ program
 program
     .command("init")
     .description("Initialize new repo in current working directory")
-    .option('-q, --quiet', 'Only print error and warning messages, all other output will be suppressed.')
+    .option('-q, --quiet', quietDescription)
     .action(CLI.init);
 
 program
     .command("clone <url>")
     .alias("cl")
     .description("Clone local or remote repo")
+    .option('-q, --quiet', quietDescription)
     .action(CLI.clone);
 
 program
     .command('status')
     .description('Show the repository status')
+    .option('-q, --quiet', quietDescription)
     .action(CLI.status);
 
 program
     .command('add [files...]')
     .description('Stage files to be commited in the nearest future')
     .option('-A, --all', 'Add all available files to stage')
+    .option('-q, --quiet', quietDescription)
     .action(CLI.add);
 
 program
@@ -413,6 +426,7 @@ program
     'Replace the last commit with a new commit, retaining all changes made, commit time,' +
     ' optionally message and author.')
     .option('--allow-empty', 'Bypass changes count check, allows you to create commits without changes')
+    .option('-q, --quiet', quietDescription)
     .action(CLI.commit);
 
 program
@@ -425,18 +439,21 @@ program
     .description('Show commits log')
     .option('-g, --graph', 'Output as commit graph')
     .option('-f, --format <format>', 'Set output formatting, available options are: oneline|onelineWide|short|medium|full|fuller|format=<...>', /^(oneline|onelineWide|short|medium|full|fuller|format=.*)$/i)
+    .option('-q, --quiet', quietDescription)
     .action(CLI.commitLog);
 
 program
     .command('branch [name]')
     .description('List, create or delete branches')
     .option('-a, --all', 'Show all branches')
+    .option('-q, --quiet', quietDescription)
     .action(CLI.branch);
 
 program
     .command('checkout <what>')
     .description('Checkout a branch, a tag or a specific commit to the working tree')
     .option('-f, --force', 'Throw away local changes, if any.')
+    .option('-q, --quiet', quietDescription)
     .action(CLI.checkout);
 
 program
@@ -444,12 +461,13 @@ program
     .description('Remove files from the index, and optionally from the working tree too')
     .option('-C, --cached', 'Leave working tree unchanged, only remove from the index')
     .option('-D, --deleted', 'Remove locally deleted files from the index')
+    .option('-q, --quiet', quietDescription)
     .action(CLI.rm);
 
 program
     .command('reset [paths...]')
     .description('Reset current HEAD to the specified state')
-    .option('-q, --quiet', 'Be quiet, do not print any notices')
+    .option('-q, --quiet', quietDescription)
     .option('--soft', 'Only move HEAD to the specified target')
     .option('--mixed', 'Reset index, but not the working tree (default)')
     .option('--hard', 'Reset the index and the working tree')
