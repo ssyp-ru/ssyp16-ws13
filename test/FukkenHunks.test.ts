@@ -8,9 +8,9 @@ var createHash = require('sha.js');
 describe("Hulk module", () => {
     /*before(() => {
         try {
-            var stat = nfs.statSync('.jerk');
+            var stat = nfs.stat('.jerk');
         } catch (e) {
-            nfs.mkdirSync('.jerk', 0o755);
+            nfs.mkdir('.jerk', 0o755);
         }*/
     describe("Class Diff", () => {
         it("get hunks", () => {
@@ -18,11 +18,11 @@ describe("Hulk module", () => {
             var bf1 = new Buffer("Hello, Artyom! Jerk commit!");
             var firstFileObject = fs.create(bf1);
             var firstHash = createHash('sha256').update(bf1).digest('hex');
-            nfs.writeFileSync('.jerk/' + firstHash, bf1, { mode: 0o644 });
+            nfs.writeFile('.jerk/' + firstHash, bf1, { mode: 0o644 });
             var bf2 = new Buffer("Hello, World! Jerk push!");
             var secondFileObject = fs.create(bf1);
             var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFileSync('.jerk/' + secondHash, bf2, { mode: 0o644 });
+            nfs.writeFile('.jerk/' + secondHash, bf2, { mode: 0o644 });
             var hunks: HunkExp.Hunk[] = [];
             var words: Buffer[] = [];
             words[0] = new Buffer("Artyom");
@@ -40,11 +40,11 @@ describe("Hulk module", () => {
             var bf1 = new Buffer("Hello, Artyom! Jerk commit!");
             var firstFileObject = fs.create(bf1);
             var firstHash = createHash('sha256').update(bf1).digest('hex');
-            nfs.writeFileSync('.jerk/' + firstHash, bf1, { mode: 0o644 });
+            nfs.writeFile('.jerk/' + firstHash, bf1, { mode: 0o644 });
             var bf2 = new Buffer("Hello, World! Jerk push!");
             var secondFileObject = fs.create(bf1);
             var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFileSync('.jerk/' + secondHash, bf2, { mode: 0o644 });
+            nfs.writeFile('.jerk/' + secondHash, bf2, { mode: 0o644 });
             var hunks: HunkExp.Hunk[] = [];
             var words: Buffer[] = [];
             words[0] = new Buffer("Artyom");
@@ -62,11 +62,11 @@ describe("Hulk module", () => {
             var bf1 = new Buffer("Hello, Artyom! Jerk commit!");
             var firstFileObject = fs.create(bf1);
             var firstHash = createHash('sha256').update(bf1).digest('hex');
-            nfs.writeFileSync('.jerk/' + firstHash, bf1, { mode: 0o644 });
+            nfs.writeFile('.jerk/' + firstHash, bf1, { mode: 0o644 });
             var bf2 = new Buffer("Hello, World! Jerk push!");
             var secondFileObject = fs.create(bf1);
             var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFileSync('.jerk/' + secondHash, bf2, { mode: 0o644 });
+            nfs.writeFile('.jerk/' + secondHash, bf2, { mode: 0o644 });
             var hunks: HunkExp.Hunk[] = [];
             var diff = new HunkExp.Diff(hunks);
             var words: Buffer[] = [];
@@ -84,11 +84,11 @@ describe("Hulk module", () => {
             var bf1 = new Buffer("Hello, Artyom! Jerk commit!");
             var firstFileObject = fs.create(bf1);
             var firstHash = createHash('sha256').update(bf1).digest('hex');
-            nfs.writeFileSync('.jerk/' + firstHash, bf1, { mode: 0o644 });
+            nfs.writeFile('.jerk/' + firstHash, bf1, { mode: 0o644 });
             var bf2 = new Buffer("Hello, World! Jerk push!");
             var secondFileObject = fs.create(bf1);
             var secondHash = createHash('sha256').update(bf2).digest('hex');
-            nfs.writeFileSync('.jerk/' + secondHash, bf2, { mode: 0o644 });
+            nfs.writeFile('.jerk/' + secondHash, bf2, { mode: 0o644 });
             var hunks: HunkExp.Hunk[] = [];
             var Diff1 = HunkExp.Diff.diffFiles(firstFileObject, secondFileObject);
             var Diff2 = HunkExp.Diff.diffFiles(firstFileObject, secondFileObject);
