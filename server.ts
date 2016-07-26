@@ -45,8 +45,8 @@ module Server {
     let configPath = path.join(configDir, 'jerk-server', repoName);
 
     class ServerRepo extends Common.Repo {
-        constructor(rootPath: string, quiet: boolean = false) {
-            super(rootPath, false, quiet);
+        constructor(rootPath: string) {
+            super(rootPath, false);
             this.fs = fs.fs(true);
 
             var stat: nfs.Stats;
@@ -72,7 +72,7 @@ module Server {
         }
     }
 
-    let repo = Common.cwdRepo();
+    let repo = new ServerRepo(process.cwd());
 
     // rsync daemon process handle
     var rsyncDaemon: child_process.ChildProcess;
@@ -97,7 +97,7 @@ module Server {
 
     export function startRSYNCDaemon() {
         var out = nfs.openSync('./out.log', 'a');
-        var err = nfs.openSync('./err.log', 'a');
+        var err = nfs.openSync('./out.log', 'a');
         rsyncDaemon = child_process.spawn('rsync',
             ['--daemon', '-v', '--port=19246', '--config="' + configPath + '"'],
             {
