@@ -137,26 +137,28 @@ module CLI {
         var oldCommitData: string[] = null;
         var basedOnSomeCommit = false;
 
-        let lcOption = optionConfig.toLowerCase();
-        if (lcOption === "orig_head") {
-            oldCommitData = fse.readJsonSync(path.join(repo.root, '.jerk', 'ORIG_HEAD'));
-            basedOnSomeCommit = true;
-        } else if (lcOption === "head") {
-            oldCommitData = fse.readJsonSync(path.join(repo.root, '.jerk', 'HEAD'));
-            basedOnSomeCommit = true;
-        } else {
-            let branch = repo.ref<Common.Ref>(optionConfig);
-            if (!!branch) {
-                let cm = repo.commit(branch.head);
-                if (!!cm) {
-                    oldCommitData = cm.data();
-                    basedOnSomeCommit = true;
-                }
+        if (!!optionConfig) {
+            let lcOption = optionConfig.toLowerCase();
+            if (lcOption === "orig_head") {
+                oldCommitData = fse.readJsonSync(path.join(repo.root, '.jerk', 'ORIG_HEAD'));
+                basedOnSomeCommit = true;
+            } else if (lcOption === "head") {
+                oldCommitData = fse.readJsonSync(path.join(repo.root, '.jerk', 'HEAD'));
+                basedOnSomeCommit = true;
             } else {
-                let cm = repo.commit(optionConfig);
-                if (!!cm) {
-                    oldCommitData = cm.data();
-                    basedOnSomeCommit = true;
+                let branch = repo.ref<Common.Ref>(optionConfig);
+                if (!!branch) {
+                    let cm = repo.commit(branch.head);
+                    if (!!cm) {
+                        oldCommitData = cm.data();
+                        basedOnSomeCommit = true;
+                    }
+                } else {
+                    let cm = repo.commit(optionConfig);
+                    if (!!cm) {
+                        oldCommitData = cm.data();
+                        basedOnSomeCommit = true;
+                    }
                 }
             }
         }
