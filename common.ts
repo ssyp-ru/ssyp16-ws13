@@ -334,7 +334,7 @@ export class Repo {
         this._detachedHEAD = config.detachedHEAD;
 
         this._refs = loadRefsFromObject(config.refs);
-        this._commits = loadCommitsFromObject(config.commits);
+        this._commits = loadCommitsFromObject(config.commits, this);
 
         this._staged = config.staged;
     }
@@ -450,7 +450,7 @@ export class Repo {
     /**
      * Get all commits in this repo.
      */
-    commits(): Commit[] { return [].concat(this._commits); }
+    commits(): Commit[] { return this._commits.iterValues(); }
 
     /**
      * Find Ref by its name
@@ -714,7 +714,7 @@ export function loadRefsFromObject(o: Object): StringMap<Ref> {
     return res;
 }
 
-export function loadCommitsFromObject(o: Object): StringMap<Commit> {
+export function loadCommitsFromObject(o: Object, repo: Repo): StringMap<Commit> {
     let res = new StringMap<Commit>();
     iterateStringKeyObject<string[]>(o).forEach(v => {
         var key: string = v.key;
@@ -732,7 +732,7 @@ export function loadCommitsFromObject(o: Object): StringMap<Commit> {
             contents.put(path, new TreeFile(path, v.value['time'], v.value['hash']));
         });
 
-        var commit = new Commit(data[1], this,
+        var commit = new Commit(data[1], repo,
             data[5], data[2], data[3], data[4], parseInt(data[6]), contents,
             data[8], JSON.parse(data[9]));
         res.put(key, commit);

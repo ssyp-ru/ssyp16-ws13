@@ -1,6 +1,7 @@
 #!/usr/bin/node
 import * as colors from 'colors/safe';
 import * as child_process from "child_process";
+import * as http from "http";
 import * as fs from "fs";
 import * as fse from 'fs-extra';
 import * as path from 'path';
@@ -44,12 +45,60 @@ module CLI {
     export function clone(url: string, options: any) {
         if (!!options.quiet) log.silence();
 
-        log.log(url);
-        child_process.execFile("rsync", ['rsync://127.1:19246/git', '-r', '.'], (err, stdout, stderr) => {
-            if (!!err) log.log(err);
-            if (!!stdout) log.log(stdout);
-            if (!!stderr) log.log(stderr);
-        });
+        var parts = url.split(':');
+        var host = url[0];
+        var port = 19246;
+        if (parts.length > 1) {
+            port = parseInt(parts[1]);
+        }
+        let req = http.get(
+            {
+                host: host,
+                port: port + 2,
+                path: '/config'
+            },
+            (res) => {
+                let cfg = path.join('.jerk', 'config');
+                fse.ensureFileSync(cfg);
+                res
+                    .on('data', (chunk: Uint8Array) => {
+                        let buf = new Buffer(chunk);
+                        fs.writeFileSync(cfg, buf, { mode: 0o644 });
+                    })
+                    .on('end', () => {
+                        var json: string = fs.readFileSync(cfg, 'utf8');
+
+                        let config: {
+                            defaultBranchName: string,
+                            refs: Object,
+                            commits: Object,
+                        } = JSON.parse(json);
+
+                        let nconfig = {
+                            defaultBranchName: config.defaultBranchName,
+                            currentBranchName: config.defaultBranchName,
+                            detachedHEAD: null,
+                            refs: config.refs,
+                            commits: config.commits,
+                            staged: []
+                        };
+
+                        var json = JSON.stringify(nconfig);
+                        fs.writeFileSync(cfg, json, { mode: 0o644 });
+
+                        let repo = new Common.Repo(process.cwd());
+                        repo.saveConfig();
+                        log.info(repo.name + ':', colors.yellow('' + repo.commits().length), 'commits');
+                    });
+                child_process.execFile("rsync", [`rsync://${host}:${port}/git/objects`, '-r', path.join('.jerk', 'objects')], (err, stdout, stderr) => {
+                    if (!!err) log.log(err);
+                    if (!!stdout) log.log(stdout);
+                    if (!!stderr) log.log(stderr);
+                });
+            })
+            .on('error', (e) => {
+                log.error(e);
+            });
     }
 
     export function status(options: any) {

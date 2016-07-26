@@ -7,8 +7,8 @@
             "request": "launch",
             "program": "${workspaceRoot}/cli.js",
             "stopOnEntry": false,
-            "args": ["commit", "--allow-empty", "-c", "ORIG_HEAD", "12345"],
-            "cwd": "/home/ssyp/jerk-test",
+            "args": ["clone", "0.0.0.1:19246"],
+            "cwd": "/home/ssyp/clone",
             "preLaunchTask": "tsc",
             "runtimeExecutable": null,
             "runtimeArgs": [

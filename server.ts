@@ -19,6 +19,7 @@ let uuid = require('uuid');
 let xdgBasedir = require('xdg-basedir');
 let osTmpdir = require('os-tmpdir');
 let writeFileAtomic = require('write-file-atomic');
+let ProgressBar = require('progress');
 
 module Server {
     // Initialize major subsystems
@@ -26,11 +27,12 @@ module Server {
     let conf = new Configstore('jerk-server');
 
     // Create command line prompt
-    let rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-    rl.setPrompt(colors.green("JERK => "));
+    // let rl = readline.createInterface({
+    //     input: process.stdin,
+    //     output: process.stdout,
+    // });
+    let promptString = colors.green("JERK => ");
+    // rl.setPrompt(promptString);
 
     // Configstore options
     let user = (osenv.user() || uuid.v4()).replace(/\\/g, '');
@@ -102,7 +104,7 @@ module Server {
             this._defaultBranchName = config.defaultBranchName;
 
             this._refs = Common.loadRefsFromObject(config.refs);
-            this._commits = Common.loadCommitsFromObject(config.commits);
+            this._commits = Common.loadCommitsFromObject(config.commits, this);
         }
 
         get currentBranchName(): string { throw 42; }
@@ -141,6 +143,35 @@ module Server {
     // rsync daemon process handle
     var rsyncDaemon: child_process.ChildProcess;
 
+    // HTTP Web API
+    let html = `<!DOCTYPE html><html><head><title>JERK Repo</title></head><body><h1>"${repo.name}" repository</h1><p>Command to clone this repository:</p><pre><code>jerk clone %hostname%</code></pre></body></html>`
+    let server = http.createServer(httpHandle);
+    function httpHandle(req: http.IncomingMessage, res: http.ServerResponse) {
+        res.statusCode = 200;
+        let url = req.url;
+        if (url.startsWith("/favicon")) {
+            res.end();
+            return;
+        }
+        // log.info(JSON.stringify(req.headers));
+        if (url === '/') {
+            res.setHeader('Content-Type', 'text/html');
+            res.end(html.replace('%hostname%', req.headers['host']));
+            return;
+        }
+        res.setHeader('Content-Type', 'text/plain');
+        if (url === '/config') {
+            res.end(nfs.readFileSync(path.join(repo.jerkPath, 'config'), 'utf8'));
+            return;
+        }
+        if (url === '/push') {
+            res.end('TODO');
+            return;
+        }
+        res.statusCode = 404;
+        res.end(`404`);
+    }
+
     export function createRSYNCConfig() {
         log.success("Starting JERK server...");
         try {
@@ -163,47 +194,39 @@ module Server {
         var out = nfs.openSync('./out.log', 'a');
         var err = nfs.openSync('./out.log', 'a');
         rsyncDaemon = child_process.spawn('rsync',
-            ['--daemon', '-v', '--port=19246', '--config=' + configPath],
+            ['--daemon', '-v', '--no-detach', '--port=19246', '--config=' + configPath],
             {
                 detached: true,
                 stdio: ['ignore', out, err]
             });
-        rsyncDaemon.unref();
-        let hostname = '127.0.0.1';
+        // rsyncDaemon.unref();
+        let hostname = '0.0.0.0';
         let port = 19248;
-        const server = http.createServer((req, res) => {
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'text/plain');
-            res.end(`${repo.name}`);
-        });
         server.listen(port, hostname, () => {
-            console.log(`Server running at http://${hostname}:${port}/`);
+            log.success(`Server running at port ${port}...`);
         });
+        /*
+        var bar = new ProgressBar('  sync [:bar] :percent :etas', { total: 100 });
+        var timer = setInterval(function () {
+            bar.tick();
+            if (bar.complete) {
+                console.log('\ncomplete\n');
+                clearInterval(timer);
+            }
+        }, 100);
+        */
     }
 
     export function loopRSYNCDaemon() {
-        rl.prompt();
-        rl.on('line', (line: string) => {
-            switch (line.trim()) {
-                case 'exit':
-                case 'stop':
-                case 'kill': {
-                    stop();
-                    return;
-                }
-            }
-            rl.prompt();
-        })
-            .on('SIGINT', stop)
-            .on('SIGTERM', stop);
+        process.on('SIGINT', stop);
+        process.on('SIGTERM', stop);
     }
 
     export function stop() {
-        rl.pause();
-        rl.close();
         log.log();
         log.info(`Killing rsync ${colors.red('daemon')}...`)
         rsyncDaemon.kill('SIGTERM');
+        server.close();
         log.info(colors.blue("Good night, sweetheart!"));
         process.exit(0);
     }

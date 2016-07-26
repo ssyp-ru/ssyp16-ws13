@@ -1,10 +1,11 @@
 declare module "fs-extra" {
+    import fs = require("fs");
     interface Callback {
         (err: Error);
     }
     export function copy(src: string, dest: string, options?: { clobber?: boolean, preserveTimestamps?: boolean }, callback?: Callback);
     export function copySync(src: string, dest: string, options?: { clobber?: boolean, preserveTimestamps?: boolean });
-    export function createOutputStream(file: string, options?: Object);
+    export function createOutputStream(file: string, options?: Object): fs.WriteStream;
     export function emptyDir(dir: string, callback?: Callback);
     export function emptydir(dir: string, callback?: Callback);
     export function emptyDirSync(dir: string);
