@@ -212,6 +212,7 @@ module CLI {
         var graph = !!options.graph;
         if (options.format === true) {
             log.error('unknown log format');
+            return;
         }
 
         var format: string = options.format
