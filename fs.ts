@@ -43,33 +43,30 @@ module FileSystem {
      * Represents a single object in file tree.
      * It is possible that a file/symlink represented by this object does not exist.
      */
-    export interface IFileSystemObject {
+    export abstract class IFileSystemObject {
+        constructor(private _hash: string, protected fs: FSImplementation) {
+        }
         /**
          * Returns object content hash.
          */
-        hash(): string;
-        /**
-         * Get parent node of the FS tree.
-         * Returns null if it is already root repo directory.
-         */
-        //////////////////////////////////////////////////////////////////////////////////////////////////////
-        // parent(): IFileSystemObject;
-        //////////////////////////////////////////////////////////////////////////////////////////////////////
+        hash(): string {
+            return this._hash;
+        }
         /**
          * Returns full path to the current IFileSystemObject.
          * Guaranteed to be absolute from the root repo path.
          */
-        fullPath(): string;
+        abstract fullPath(): string;
         /**
          * Returns true if this IFileSystemObject represents file.
          * Useful in case you just want to check type without actually casting IFileSystemObject to its type.
          */
-        isFile(): boolean;
+        abstract isFile(): boolean;
         /**
          * Returns true if this IFileSystemObject represents symlink.
          * Useful in case you just want to check type without actually casting IFileSystemObject to its type.
          */
-        isSymlink(): boolean;
+        abstract isSymlink(): boolean;
         /**
          * Returns this IFileSystemObject if this IFileSystemObject represents file, null otherwise.
          * Typical usecase:
@@ -81,7 +78,7 @@ module FileSystem {
          }
          ```
          */
-        asFile(): FileObject;
+        abstract asFile(): FileObject;
         /**
          * Returns this IFileSystemObject if this IFileSystemObject represents symlink, null otherwise.
          * Typical usecase:
@@ -93,40 +90,36 @@ module FileSystem {
          }
          ```     
          */
-        asSymlink(): SymlinkObject;
-
+        abstract asSymlink(): SymlinkObject;
     }
-    export interface FileObject extends
-        IFileSystemObject {
+    export abstract class FileObject extends IFileSystemObject {
         /**
          * Get byte Buffer file contents.
          */
-        buffer(): Buffer;
+        abstract buffer(): Buffer;
         /**
          * Returns size of this file.
          */
-        size(): number;
+        abstract size(): number;
     }
-    export interface SymlinkObject extends IFileSystemObject {
+    export abstract class SymlinkObject extends IFileSystemObject {
         /**
          * Returns path of the node this symlink is pointing to.
          * It is not guaranteed that it will be absolute path from the root repo path.
          * To resolve path use IFileSystem#resolveObjectRelativeTo.
          */
-        symlinkPath(): string;
+        abstract symlinkPath(): string;
     }
 
-    class FObject implements FileObject {
-        constructor(private _hash: string, private fs: FSImplementation) {
+    class FObject extends FileObject {
+        constructor(_hash: string, fs: FSImplementation) {
+            super(_hash, fs);
         }
         buffer(): Buffer {
             return nfs.readFileSync(this.fullPath());
         }
         size(): number {
             return this.buffer().length;
-        }
-        hash(): string {
-            return this._hash;
         }
         fullPath(): string {
             return path.join(this.fs.root, this.hash);
@@ -145,11 +138,9 @@ module FileSystem {
         }
     }
 
-    class SObject implements SymlinkObject {
-        constructor(private _hash: string, private fs: FSImplementation) {
-        }
-        hash(): string {
-            return this._hash;
+    class SObject extends SymlinkObject {
+        constructor(_hash: string, fs: FSImplementation) {
+            super(_hash, fs);
         }
         symlinkPath(): string {
             return nfs.readFileSync(this.fullPath(), 'utf8');
