@@ -45,7 +45,7 @@ module CLI {
         if (!!options.quiet) log.silence();
 
         log.log(url);
-        child_process.execFile("rsync", ['rsync://127.1:19246/git'], (err, stdout, stderr) => {
+        child_process.execFile("rsync", ['rsync://127.1:19246/git', '-r', '.'], (err, stdout, stderr) => {
             if (!!err) log.log(err);
             if (!!stdout) log.log(stdout);
             if (!!stderr) log.log(stderr);

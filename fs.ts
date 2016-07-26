@@ -117,9 +117,7 @@ module FileSystem {
     }
 
     class FObject implements FileObject {
-        private _hash: string;
-        constructor(hash: string) {
-            this._hash = hash;
+        constructor(private _hash: string, private fs: FSImplementation) {
         }
         buffer(): Buffer {
             return nfs.readFileSync(this.fullPath());
@@ -131,7 +129,7 @@ module FileSystem {
             return this._hash;
         }
         fullPath(): string {
-            return '.jerk/' + this._hash;
+            return path.join(this.fs.root, this.hash);
         }
         isFile(): boolean {
             return true;
@@ -148,18 +146,16 @@ module FileSystem {
     }
 
     class SObject implements SymlinkObject {
-        private _hash: string;
-        constructor(hash: string) {
-            this._hash = hash;
-        }
-        symlinkPath(): string {
-            return nfs.readFileSync(this.fullPath(), 'utf8');
+        constructor(private _hash: string, private fs: FSImplementation) {
         }
         hash(): string {
             return this._hash;
         }
+        symlinkPath(): string {
+            return nfs.readFileSync(this.fullPath(), 'utf8');
+        }
         fullPath(): string {
-            return '.jerk/' + this._hash + '.symlink';
+            return path.join(this.fs.root, this.hash + '.symlink');
         }
         isFile(): boolean {
             return false;
@@ -175,6 +171,8 @@ module FileSystem {
         }
     }
     class FSImplementation implements IFileSystem {
+        constructor(public server: boolean = false) { }
+        get root(): string { return this.server ? '.' : '.jerk'; }
         resolveObjectByHash(hash: string): IFileSystemObject {
             return this.resolveHash(hash);
         }
@@ -182,18 +180,18 @@ module FileSystem {
             return this.resolveHash(createHash('sha256').update(contents).digest('hex'));
         }
         entries(): IFileSystemObject[] {
-            return nfs.readdirSync('.jerk').filter(v => v.length > 60).map(v => this.resolveHash(v));
+            return nfs.readdirSync(this.root).filter(v => v.length > 60).map(v => this.resolveHash(v));
         }
         create(blob: Buffer): FileObject {
             var hash = createHash('sha256').update(blob).digest('hex');
-            nfs.writeFileSync('.jerk/' + hash, blob, { mode: 0o644 });
-            return new FObject(hash);
+            nfs.writeFileSync(path.join(this.root, hash), blob, { mode: 0o644 });
+            return new FObject(hash, this);
         }
-        symlink(path: string): SymlinkObject {
+        symlink(target: string): SymlinkObject {
             var hash = createHash('sha256').update(path, 'utf8').digest('hex');
-            nfs.writeFileSync('.jerk/' + hash, path, { encoding: 'utf8', mode: 0o644 });
-            nfs.writeFileSync('.jerk/' + hash + ".symlink", path, { encoding: 'utf8', mode: 0o644 });
-            return new SObject(hash);
+            nfs.writeFileSync(path.join(this.root, hash), path, { encoding: 'utf8', mode: 0o644 });
+            nfs.writeFileSync(path.join(this.root, hash + ".symlink"), path, { encoding: 'utf8', mode: 0o644 });
+            return new SObject(hash, this);
         }
         remove(id: string): boolean {
             var o = this.resolveHash(id);
@@ -206,12 +204,12 @@ module FileSystem {
         }
         private resolveHash(hash: string): IFileSystemObject {
             try {
-                var stat = nfs.statSync('.jerk/' + hash)
-                return new FObject(hash);
+                var stat = nfs.statSync(path.join(this.root, hash))
+                return new FObject(hash, this);
             } catch (e) {
                 try {
-                    var lstat = nfs.lstatSync('.jerk/' + hash + '.symlink');
-                    return new SObject(hash);
+                    var lstat = nfs.lstatSync(path.join(this.root, hash + '.symlink'));
+                    return new SObject(hash, this);
                 } catch (e1) {
                     return null;
                 }
@@ -224,6 +222,6 @@ module FileSystem {
      * It is possible that multiple instances of IFileSystem can exist at the same time.
      * But it is not recommended for obvious implementation reasons.
      */
-    export function fs(): IFileSystem { return new FSImplementation(); }
+    export function fs(server: boolean = false): IFileSystem { return new FSImplementation(server); }
 }
 export = FileSystem;

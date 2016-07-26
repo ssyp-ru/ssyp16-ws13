@@ -7,8 +7,8 @@ import fs = require('./fs');
 import * as logSymbols from 'log-symbols';
 import * as Logger from './log';
 import * as colors from 'colors/safe';
-var parents = require('parents');
-var createHash = require('sha.js');
+let parents = require('parents');
+let createHash = require('sha.js');
 
 let log = new Logger.Logger();
 
@@ -272,16 +272,15 @@ export class Repo {
 
         if (!this.local) return;
 
-        var jerkPath = path.join(this.root, '.jerk');
         var stat: nfs.Stats;
         try {
-            stat = nfs.statSync(jerkPath);
+            stat = nfs.statSync(this.jerkPath);
         } catch (e) { }
         if (!stat || !stat.isDirectory()) {
             if (!init) {
                 throw (colors.dim('JERK') + ' ' + logSymbols.error + " is not a repository!");
             }
-            nfs.mkdirSync(jerkPath, 0o755);
+            nfs.mkdirSync(this.jerkPath, 0o755);
 
             this.createBranch('master', null);
 
@@ -295,7 +294,6 @@ export class Repo {
     }
 
     saveConfig() {
-        var jerkPath = path.join(this.root, '.jerk');
         var config = {
             defaultBranchName: this._defaultBranchName,
             currentBranchName: this._currentBranchName,
@@ -314,13 +312,12 @@ export class Repo {
         });
 
         var json = JSON.stringify(config);
-        nfs.writeFileSync(path.join(jerkPath, 'config'), json, { mode: 0o644 });
+        nfs.writeFileSync(path.join(this.jerkPath, 'config'), json, { mode: 0o644 });
         this.writeHEADCommitData();
     }
 
-    private _loadConfig() {
-        var jerkPath = path.join(this.root, '.jerk');
-        var json: string = nfs.readFileSync(path.join(jerkPath, 'config'), 'utf8');
+    protected _loadConfig() {
+        var json: string = nfs.readFileSync(path.join(this.jerkPath, 'config'), 'utf8');
 
         var config: {
             defaultBranchName: string,
@@ -375,6 +372,8 @@ export class Repo {
 
         this._staged = config.staged;
     }
+
+    get jerkPath(): string { return path.join(this.root, '.jerk'); }
 
     /**
      * Default for this repo branch name. Checks branch name for existance.
@@ -683,17 +682,15 @@ export class Repo {
         var commit = this.lastCommit;
         if (!commit) return;
 
-        var jerkPath = path.join(this.root, '.jerk');
         var json = JSON.stringify(commit.data());
-        nfs.writeFileSync(path.join(jerkPath, 'HEAD'), json, { mode: 0o644 });
+        nfs.writeFileSync(path.join(this.jerkPath, 'HEAD'), json, { mode: 0o644 });
     }
 
     writeORIGHEADCommitData(commit: Commit) {
         if (!commit) return;
 
-        var jerkPath = path.join(this.root, '.jerk');
         var json = JSON.stringify(commit.data());
-        nfs.writeFileSync(path.join(jerkPath, 'ORIG_HEAD'), json, { mode: 0o644 });
+        nfs.writeFileSync(path.join(this.jerkPath, 'ORIG_HEAD'), json, { mode: 0o644 });
     }
 }
 
