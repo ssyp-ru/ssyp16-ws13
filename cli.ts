@@ -42,6 +42,39 @@ module CLI {
         Client.init(process.cwd());
     }
 
+    export function fetchConfig(url: string): string {
+        var parts = url.split(':');
+        var host = url[0];
+        var port = 19246;
+        var cfg = '';
+        var done = false;
+        if (parts.length > 1) {
+            port = parseInt(parts[1]);
+        }
+        let req = http.get(
+            {
+                host: host,
+                port: port + 2,
+                path: '/config'
+            },
+            (res) => {
+                res.setEncoding('utf8');
+                res
+                    .on('data', (chunk: string) => {
+                        cfg += chunk;
+                    })
+                    .on('end', () => {
+                        done = true;
+                    });
+            })
+            .on('error', (e) => {
+                log.error(e);
+                done = true;
+            });
+        while (!done) { }
+        return cfg;
+    }
+
     export function clone(url: string, options: any) {
         if (!!options.quiet) log.silence();
 
@@ -90,11 +123,13 @@ module CLI {
                         repo.saveConfig();
                         log.info(repo.name + ':', colors.yellow('' + repo.commits().length), 'commits');
                     });
-                child_process.execFile("rsync", [`rsync://${host}:${port}/git/objects`, '-r', path.join('.jerk', 'objects')], (err, stdout, stderr) => {
-                    if (!!err) log.log(err);
-                    if (!!stdout) log.log(stdout);
-                    if (!!stderr) log.log(stderr);
-                });
+                child_process.execFile("rsync",
+                    [`rsync://${host}:${port}/git/objects`, '--info=progress2', '-E', '-h', '-h', '-h', '-r', path.join('.jerk', 'objects')],
+                    (err, stdout, stderr) => {
+                        if (!!err) log.log(err);
+                        if (!!stdout) log.log(stdout);
+                        if (!!stderr) log.log(stderr);
+                    });
             })
             .on('error', (e) => {
                 log.error(e);
@@ -438,6 +473,34 @@ module CLI {
             Client.resetSecondMode(repo, soft, mixed, hard, merge, targetCommit);
         }
     }
+
+    export function pull(options: any) {
+        if (!!options.quiet) log.silence();
+        let repo = cwdRepo();
+
+        let url = conf.get('repo_' + repo.name + '.url');
+        if (!url) {
+            log.error(`remote address not specified. Use ${colors.bold('jerk config set this.url <url>')} to set remote address to ${colors.italic('<url>')}`);
+            return;
+        }
+
+        let cfg = fetchConfig(url);
+        log.info(cfg);
+    }
+
+    export function push(options: any) {
+        if (!!options.quiet) log.silence();
+        let repo = cwdRepo();
+
+        let url = conf.get('repo_' + repo.name + '.url');
+        if (!url) {
+            log.error(`remote address not specified. Use ${colors.bold('jerk config set this.url <url>')} to set remote address to ${colors.italic('<url>')}`);
+            return;
+        }
+
+        let cfg = fetchConfig(url);
+        log.info(cfg);
+    }
 }
 
 program
@@ -525,6 +588,16 @@ program
     .option('--hard', 'Reset the index and the working tree')
     .option('--merge', 'Revert failed merge attempt but keep any other local changes')
     .action(CLI.reset);
+
+program
+    .command('pull')
+    .description('Fetch and merge remote changes with local branches')
+    .action(CLI.pull);
+
+program
+    .command('push')
+    .description('Upload local object and ref changes to remote repository')
+    .action(CLI.push);
 
 program.parse(process.argv);
 if (!process.argv.slice(2).length) {

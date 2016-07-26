@@ -47,6 +47,7 @@ module Server {
     let configPath = path.join(configDir, 'jerk-server', repoName);
 
     class ServerRepo extends Common.Repo {
+        private _revision: number = 0;
         constructor(rootPath: string) {
             super(rootPath, false);
             this._fs = fs.fs(true);
@@ -77,7 +78,8 @@ module Server {
             var config = {
                 defaultBranchName: this._defaultBranchName,
                 refs: {},
-                commits: {}
+                commits: {},
+                revision: this._revision
             };
 
             this._refs.iter().forEach(v => {
@@ -99,12 +101,15 @@ module Server {
                 defaultBranchName: string,
                 refs: Object,
                 commits: Object,
+                revision: number
             } = JSON.parse(json);
 
             this._defaultBranchName = config.defaultBranchName;
 
             this._refs = Common.loadRefsFromObject(config.refs);
             this._commits = Common.loadCommitsFromObject(config.commits, this);
+
+            this._revision = config.revision;
         }
 
         get currentBranchName(): string { throw 42; }
@@ -136,6 +141,25 @@ module Server {
         writeHEADCommitData() { throw 42; }
 
         writeORIGHEADCommitData(commit: Common.Commit) { throw 42; }
+
+        applyCommits(commits: Common.StringMap<Common.Commit>) {
+            commits.iter().forEach(v => {
+                let key = v.key;
+                if (!!this._commits.data[key]) throw 'rejected, commit already exists on remote';
+                this._commits.data[v.key] = v.value;
+            });
+        }
+
+        applyRefs(refs: Common.StringMap<Common.Ref>) {
+            this._refs.copyFrom(refs);
+        }
+
+        get revision(): number { return this._revision; }
+
+        set revision(num: number) {
+            this._revision = num;
+            this.saveConfig();
+        }
     }
 
     let repo = new ServerRepo(repoPath);
@@ -165,11 +189,44 @@ module Server {
             return;
         }
         if (url === '/push') {
-            res.end('TODO');
-            return;
+            var body = '';
+            req.setEncoding('utf8');
+
+            req.on('data', (chunk) => {
+                body += chunk;
+            });
+
+            req.on('end', () => {
+                try {
+                    let data = JSON.parse(body);
+                    return handlePush(data, req, res);
+                } catch (er) {
+                    res.statusCode = 400;
+                    return res.end(`error: ${er.message}`);
+                }
+            });
         }
-        res.statusCode = 404;
-        res.end(`404`);
+    }
+
+    function handlePush(data: any, req: http.IncomingMessage, res: http.ServerResponse) {
+        log.info(JSON.stringify(data));
+        if (!data.revision && data.revision !== 0) {
+            return res.end('rejected, revision not specified');
+        }
+        if (data.revision !== repo.revision) {
+            return res.end('rejected, revision mismatch');
+        }
+        if (!!data.commits) {
+            try {
+                repo.applyCommits(Common.loadCommitsFromObject(data.commits, null));
+            } catch (e) {
+                return res.end(e);
+            }
+        }
+        if (!!data.refs) {
+            repo.applyRefs(Common.loadRefsFromObject(data.refs));
+        }
+        repo.revision++;
     }
 
     export function createRSYNCConfig() {
