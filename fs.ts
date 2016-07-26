@@ -116,7 +116,17 @@ module FileSystem {
         symlinkPath(): string;
     }
 
-    class FObject implements FileObject {
+    class ObjectMethods implements FileObject{
+        constructor() {}
+        hash(): string {
+            return this._hash;
+        }
+        fullPath(): string {
+            return '.jerk/' + this._hash;
+        }
+    }
+
+    class FObject extends ObjectMethods implements FileObject{
         private _hash: string;
         constructor(hash: string) {
             this._hash = hash;
@@ -126,12 +136,6 @@ module FileSystem {
         }
         size(): number {
             return this.buffer().length;
-        }
-        hash(): string {
-            return this._hash;
-        }
-        fullPath(): string {
-            return '.jerk/' + this._hash;
         }
         isFile(): boolean {
             return true;
@@ -147,19 +151,13 @@ module FileSystem {
         }
     }
 
-    class SObject implements SymlinkObject {
+    class SObject extends ObjectMethods implements SymlinkObject {
         private _hash: string;
         constructor(hash: string) {
             this._hash = hash;
         }
         symlinkPath(): string {
             return nfs.readFileSync(this.fullPath(), 'utf8');
-        }
-        hash(): string {
-            return this._hash;
-        }
-        fullPath(): string {
-            return '.jerk/' + this._hash + '.symlink';
         }
         isFile(): boolean {
             return false;
