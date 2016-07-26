@@ -1,5 +1,6 @@
 import * as nfs from 'fs';
 import * as path from 'path';
+import * as fse from 'fs-extra';
 var createHash = require('sha.js');
 
 module FileSystem {
@@ -162,8 +163,10 @@ module FileSystem {
         }
     }
     class FSImplementation implements IFileSystem {
-        constructor(public server: boolean = false) { }
-        get root(): string { return this.server ? '.' : '.jerk'; }
+        constructor(public server: boolean = false) {
+            fse.ensureDirSync(path.join(this.root));
+        }
+        get root(): string { return path.join(this.server ? '.' : '.jerk', 'objects'); }
         resolveObjectByHash(hash: string): IFileSystemObject {
             return this.resolveHash(hash);
         }

@@ -132,7 +132,8 @@ export class Ref extends Serializable {
     on(callback: Function) { this._callbacks.push(callback); }
 
     static validRefName(name: string): boolean {
-        for (var sub of name) {
+        for (var i = 0; i < forbiddenRefSubstrings.length; i++) {
+            let sub = forbiddenRefSubstrings[i];
             if (name.includes(sub)) return false;
         }
         if (name.endsWith('.lock')) return false;
@@ -247,13 +248,13 @@ export class StringMap<T> {
  * Repository class representation
  */
 export class Repo {
-    private _defaultBranchName: string;
+    protected _defaultBranchName: string;
     private _currentBranchName: string;
     private _detachedHEAD: string;
-    private _refs: StringMap<Ref>;
-    private _commits: StringMap<Commit>;
+    protected _refs: StringMap<Ref>;
+    protected _commits: StringMap<Commit>;
     private _staged: string[];
-    private _fs: fs.IFileSystem;
+    protected _fs: fs.IFileSystem;
 
     /**
      * Constructor that allows Repo creation if needed
@@ -268,10 +269,10 @@ export class Repo {
         this._refs = new StringMap<Ref>();
         this._commits = new StringMap<Commit>();
         this._staged = [];
-        this._fs = fs.fs();
 
         if (!this.local) return;
 
+        this._fs = fs.fs();
         var stat: nfs.Stats;
         try {
             stat = nfs.statSync(this.jerkPath);
@@ -325,50 +326,15 @@ export class Repo {
             detachedHEAD: string,
             refs: Object,
             commits: Object,
-            index: string[],
             staged: string[]
         } = JSON.parse(json);
 
         this._defaultBranchName = config.defaultBranchName;
         this._currentBranchName = config.currentBranchName;
         this._detachedHEAD = config.detachedHEAD;
-        this._refs = new StringMap<Ref>();
-        this._commits = new StringMap<Commit>();
 
-        iterateStringKeyObject<string[]>(config.refs).forEach(v => {
-            var key: string = v.key;
-            var data: string[] = v.value;
-            var type = data[0];
-            if (type === "Ref") {
-                this._refs.put(key, new Ref(data[2], data[1], parseInt(data[3])));
-            } else if (type === "Branch") {
-                this._refs.put(key, new Branch(data[2], data[1], parseInt(data[3])));
-            } else if (type === "Tag") {
-                this._refs.put(key, new Tag(data[2], data[1], parseInt(data[3])));
-            }
-        });
-
-        iterateStringKeyObject<string[]>(config.commits).forEach(v => {
-            var key: string = v.key;
-            var data: string[] = v.value;
-            var type = data[0];
-            if (type !== "Commit") throw "Unexpected object type while expecting Commit";
-
-            //["Commit", this._id, this._message, this._authorName, this._authorEMail,
-            //this._parentId, this._time.toString(), JSON.stringify(this._contents),
-            //this._mergeOf, JSON.stringify(this._changed)]
-
-            var contents = new StringMap<TreeFile>();
-            iterateStringKeyObject(JSON.parse(data[7])['data']).forEach(v => {
-                var path: string = v.value['path'];
-                contents.put(path, new TreeFile(path, v.value['time'], v.value['hash']));
-            });
-
-            var commit = new Commit(data[1], this,
-                data[5], data[2], data[3], data[4], parseInt(data[6]), contents,
-                data[8], JSON.parse(data[9]));
-            this._commits.put(key, commit);
-        });
+        this._refs = loadRefsFromObject(config.refs);
+        this._commits = loadCommitsFromObject(config.commits);
 
         this._staged = config.staged;
     }
@@ -729,4 +695,47 @@ export function cwdRepo(): Repo {
         }
     };
     return null;
+}
+
+export function loadRefsFromObject(o: Object): StringMap<Ref> {
+    let res = new StringMap<Ref>();
+    iterateStringKeyObject<string[]>(o).forEach(v => {
+        var key: string = v.key;
+        var data: string[] = v.value;
+        var type = data[0];
+        if (type === "Ref") {
+            res.put(key, new Ref(data[2], data[1], parseInt(data[3])));
+        } else if (type === "Branch") {
+            res.put(key, new Branch(data[2], data[1], parseInt(data[3])));
+        } else if (type === "Tag") {
+            res.put(key, new Tag(data[2], data[1], parseInt(data[3])));
+        }
+    });
+    return res;
+}
+
+export function loadCommitsFromObject(o: Object): StringMap<Commit> {
+    let res = new StringMap<Commit>();
+    iterateStringKeyObject<string[]>(o).forEach(v => {
+        var key: string = v.key;
+        var data: string[] = v.value;
+        var type = data[0];
+        if (type !== "Commit") throw "Unexpected object type while expecting Commit";
+
+        //["Commit", this._id, this._message, this._authorName, this._authorEMail,
+        //this._parentId, this._time.toString(), JSON.stringify(this._contents),
+        //this._mergeOf, JSON.stringify(this._changed)]
+
+        var contents = new StringMap<TreeFile>();
+        iterateStringKeyObject(JSON.parse(data[7])['data']).forEach(v => {
+            var path: string = v.value['path'];
+            contents.put(path, new TreeFile(path, v.value['time'], v.value['hash']));
+        });
+
+        var commit = new Commit(data[1], this,
+            data[5], data[2], data[3], data[4], parseInt(data[6]), contents,
+            data[8], JSON.parse(data[9]));
+        res.put(key, commit);
+    });
+    return res;
 }

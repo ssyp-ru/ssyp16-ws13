@@ -47,7 +47,7 @@ module Server {
     class ServerRepo extends Common.Repo {
         constructor(rootPath: string) {
             super(rootPath, false);
-            this.fs = fs.fs(true);
+            this._fs = fs.fs(true);
 
             var stat: nfs.Stats;
             try {
@@ -70,9 +70,73 @@ module Server {
         get local(): boolean {
             return false;
         }
+
+        saveConfig() {
+            var config = {
+                defaultBranchName: this._defaultBranchName,
+                refs: {},
+                commits: {}
+            };
+
+            this._refs.iter().forEach(v => {
+                config.refs[v.key] = v.value.data();
+            });
+
+            this._commits.iter().forEach(v => {
+                config.commits[v.key] = v.value.data();
+            });
+
+            var json = JSON.stringify(config);
+            nfs.writeFileSync(path.join(this.jerkPath, 'config'), json, { mode: 0o644 });
+        }
+
+        protected _loadConfig() {
+            var json: string = nfs.readFileSync(path.join(this.jerkPath, 'config'), 'utf8');
+
+            var config: {
+                defaultBranchName: string,
+                refs: Object,
+                commits: Object,
+            } = JSON.parse(json);
+
+            this._defaultBranchName = config.defaultBranchName;
+
+            this._refs = Common.loadRefsFromObject(config.refs);
+            this._commits = Common.loadCommitsFromObject(config.commits);
+        }
+
+        get currentBranchName(): string { throw 42; }
+
+        set currentBranchName(name: string) { throw 42; }
+
+        get currentBranch(): Common.Branch { throw 42; }
+
+        get detachedHEADID(): string { throw 42; }
+
+        set detachedHEADID(id: string) { throw 42; }
+
+        get detachedHEAD(): Common.Commit { throw 42; }
+
+        get staged(): string[] { throw 42; }
+
+        set staged(paths: string[]) { throw 42; }
+
+        stage(path: string) { throw 42; }
+
+        unstage(path: string) { throw 42; }
+
+        createRemoteRepo(url: string, quiet: boolean = false): Common.Repo { throw 42; }
+
+        get lastCommitID(): string { throw 42; }
+
+        get lastCommit(): Common.Commit { throw 42; }
+
+        writeHEADCommitData() { throw 42; }
+
+        writeORIGHEADCommitData(commit: Common.Commit) { throw 42; }
     }
 
-    let repo = new ServerRepo(process.cwd());
+    let repo = new ServerRepo(repoPath);
 
     // rsync daemon process handle
     var rsyncDaemon: child_process.ChildProcess;
@@ -99,18 +163,18 @@ module Server {
         var out = nfs.openSync('./out.log', 'a');
         var err = nfs.openSync('./out.log', 'a');
         rsyncDaemon = child_process.spawn('rsync',
-            ['--daemon', '-v', '--port=19246', '--config="' + configPath + '"'],
+            ['--daemon', '-v', '--port=19246', '--config=' + configPath],
             {
                 detached: true,
                 stdio: ['ignore', out, err]
             });
         rsyncDaemon.unref();
         let hostname = '127.0.0.1';
-        let port = 19247;
+        let port = 19248;
         const server = http.createServer((req, res) => {
             res.statusCode = 200;
             res.setHeader('Content-Type', 'text/plain');
-            res.end('Hello World\n');
+            res.end(`${repo.name}`);
         });
         server.listen(port, hostname, () => {
             console.log(`Server running at http://${hostname}:${port}/`);
