@@ -230,7 +230,7 @@ module Client {
         if (targetCommit.id != repo.lastCommitID) {
             let oldHEADCommit = repo.lastCommit;
 
-            repo.writeORIG_HEADCommitData(oldHEADCommit);
+            repo.writeORIGHEADCommitData(oldHEADCommit);
             repo.currentBranch.move(targetCommit.id);
             repo.saveConfig();
         }
@@ -245,7 +245,7 @@ module Client {
             targetCommit.contents.forEach(v => {
                 checkoutFileExtended(repo, targetCommit, v);
             });
-            
+
             revertAllWorkingTreeChanges(repo);
         }
     }

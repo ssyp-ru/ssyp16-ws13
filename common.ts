@@ -261,7 +261,7 @@ export class Repo {
      * @param init allow creation of new repo or not
      * @param quiet silence warnings and notices
      */
-    constructor(private root: string, init: boolean = false, quiet: boolean = false) {
+    constructor(public root: string, init: boolean = false, quiet: boolean = false) {
         this._defaultBranchName = 'master';
         this._currentBranchName = 'master';
         this._detachedHEAD = null;
