@@ -7,7 +7,7 @@
             "request": "launch",
             "program": "${workspaceRoot}/cli.js",
             "stopOnEntry": false,
-            "args": ["clone", "0.0.0.1:19246"],
+            "args": ["pull"],
             "cwd": "/home/ssyp/clone",
             "preLaunchTask": "tsc",
             "runtimeExecutable": null,

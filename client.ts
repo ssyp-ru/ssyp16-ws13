@@ -149,8 +149,7 @@ module Client {
         }
 
         let dTime = new Date(tf.time);
-        let writeOptions = { flag: 'w' };
-        fs.writeFileSync(tf.path, fo.buffer(), writeOptions);
+        fse.outputFileSync(tf.path, fo.buffer());
         fs.utimesSync(tf.path, dTime, dTime);
     }
 
@@ -161,7 +160,6 @@ module Client {
             return;
         }
 
-        let writeOptions = { flag: 'w' };
         res.modified
             .concat(res.modifiedStaged)
             .forEach(v => {
@@ -173,7 +171,7 @@ module Client {
                 var tf = commit.file(v);
                 var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
 
-                fs.writeFileSync(v, fo.buffer(), writeOptions);
+                fse.outputFileSync(v, fo.buffer());
                 fs.utimesSync(v, new Date(tf.time), new Date(tf.time));
                 repo.unstage(v);
             });
@@ -195,7 +193,7 @@ module Client {
 
                 var tf = commit.file(v);
                 var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
-                fs.writeFileSync(v, fo.buffer(), writeOptions);
+                fse.outputFileSync(v, fo.buffer());
                 fs.utimesSync(v, new Date(tf.time), new Date(tf.time));
             });
     }

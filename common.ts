@@ -464,6 +464,8 @@ export class Repo {
      */
     refs<T extends Ref>(): T[] { return this._refs.iterValues() as T[]; }
 
+    addRef<T extends Ref>(v: T) { this._refs.put(v.name, v); }
+
     /**
      * Staged file paths to commit
      */

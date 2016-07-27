@@ -2,6 +2,7 @@
 import * as colors from 'colors/safe';
 import * as child_process from "child_process";
 import * as http from "http";
+import * as net from 'net';
 import * as fs from "fs";
 import * as fse from 'fs-extra';
 import * as path from 'path';
@@ -13,6 +14,7 @@ import program = require('commander');
 import * as glob from 'glob';
 import * as Moment from 'moment';
 import Configstore = require('configstore');
+let ProgressBar = require('progress');
 
 let conf = new Configstore('jerk');
 
@@ -26,6 +28,16 @@ let quietDescription = 'Be quiet, only print warnings and errors, any other outp
 
 module CLI {
     let log = new Logger.Logger();
+
+    let rsyncPercentage = /\s+(\d+)%/;
+    function rsyncOutputProgressUpdate(stdout: any, bar: any) {
+        let s = stdout.toString().trim().split('\r').pop();
+        if (rsyncPercentage.test(s)) {
+            let perc = parseInt(rsyncPercentage.exec(s)[1]);
+            bar.tick(perc);
+        }
+        return bar.curr;
+    }
 
     function cwdRepo(): Common.Repo {
         var repo = Common.cwdRepo();
@@ -42,55 +54,98 @@ module CLI {
         Client.init(process.cwd());
     }
 
-    export function fetchConfig(url: string): string {
+    function parseRemoteAddress(url: string): { host: string, port: number } {
         var parts = url.split(':');
-        var host = url[0];
+        var host = parts[0];
         var port = 19246;
-        var cfg = '';
-        var done = false;
         if (parts.length > 1) {
             port = parseInt(parts[1]);
         }
-        let req = http.get(
+        return { host: host, port: port };
+    }
+
+    export function fetchConfig(url: string, callback: Function) {
+        var cfg = '';
+        let remote = parseRemoteAddress(url);
+        let req = http.request(
             {
-                host: host,
-                port: port + 2,
+                host: remote.host,
+                port: remote.port + 2,
                 path: '/config'
             },
             (res) => {
+                if (res.statusCode !== 200) {
+                    callback(null);
+                    return;
+                }
                 res.setEncoding('utf8');
                 res
                     .on('data', (chunk: string) => {
                         cfg += chunk;
                     })
                     .on('end', () => {
-                        done = true;
+                        callback(cfg);
                     });
             })
             .on('error', (e) => {
                 log.error(e);
-                done = true;
+                callback(null);
             });
-        while (!done) { }
-        return cfg;
+        req.end();
+    }
+
+    function cloneOnConfigFetched(cfg: string) {
+        var json: string = fs.readFileSync(cfg, 'utf8');
+
+        let config: {
+            defaultBranchName: string,
+            refs: Object,
+            commits: Object,
+        } = JSON.parse(json);
+
+        let nconfig = {
+            defaultBranchName: config.defaultBranchName,
+            currentBranchName: config.defaultBranchName,
+            detachedHEAD: null,
+            refs: config.refs,
+            commits: config.commits,
+            staged: []
+        };
+
+        var json = JSON.stringify(nconfig);
+        fs.writeFileSync(cfg, json, { mode: 0o644 });
+
+        let repo = new Common.Repo(process.cwd());
+        repo.saveConfig();
+        log.info(repo.name + ':', colors.yellow('' + repo.commits().length), 'commits');
+    }
+
+    function cloneOnObjectsFetched() {
+        let repo = new Common.Repo(process.cwd());
+        Client.checkout(repo, repo.lastCommit, repo.currentBranch);
     }
 
     export function clone(url: string, options: any) {
         if (!!options.quiet) log.silence();
 
-        var parts = url.split(':');
-        var host = url[0];
-        var port = 19246;
-        if (parts.length > 1) {
-            port = parseInt(parts[1]);
-        }
+        let remote = parseRemoteAddress(url);
         let req = http.get(
             {
-                host: host,
-                port: port + 2,
+                host: remote.host,
+                port: remote.port + 2,
                 path: '/config'
             },
             (res) => {
+                let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
+                let cp = child_process.execFile("rsync",
+                    [`rsync://${remote.host}:${remote.port}/jerk/objects`, '--info=progress2',
+                        '-E', '-hhh', '-r', '.jerk'],
+                    (err, stdout, stderr) => {
+                        if (!!err) log.log(err);
+                        if (!!stdout) rsyncOutputProgressUpdate(stdout, bar);
+                        if (!!stderr) log.log(stderr);
+                    });
+
                 let cfg = path.join('.jerk', 'config');
                 fse.ensureFileSync(cfg);
                 res
@@ -99,36 +154,13 @@ module CLI {
                         fs.writeFileSync(cfg, buf, { mode: 0o644 });
                     })
                     .on('end', () => {
-                        var json: string = fs.readFileSync(cfg, 'utf8');
+                        cloneOnConfigFetched(cfg);
 
-                        let config: {
-                            defaultBranchName: string,
-                            refs: Object,
-                            commits: Object,
-                        } = JSON.parse(json);
-
-                        let nconfig = {
-                            defaultBranchName: config.defaultBranchName,
-                            currentBranchName: config.defaultBranchName,
-                            detachedHEAD: null,
-                            refs: config.refs,
-                            commits: config.commits,
-                            staged: []
-                        };
-
-                        var json = JSON.stringify(nconfig);
-                        fs.writeFileSync(cfg, json, { mode: 0o644 });
-
-                        let repo = new Common.Repo(process.cwd());
-                        repo.saveConfig();
-                        log.info(repo.name + ':', colors.yellow('' + repo.commits().length), 'commits');
-                    });
-                child_process.execFile("rsync",
-                    [`rsync://${host}:${port}/git/objects`, '--info=progress2', '-E', '-h', '-h', '-h', '-r', path.join('.jerk', 'objects')],
-                    (err, stdout, stderr) => {
-                        if (!!err) log.log(err);
-                        if (!!stdout) log.log(stdout);
-                        if (!!stderr) log.log(stderr);
+                        cp.on('exit', () => {
+                            bar.tick(100);
+                            bar.terminate();
+                            cloneOnObjectsFetched();
+                        });
                     });
             })
             .on('error', (e) => {
@@ -484,8 +516,165 @@ module CLI {
             return;
         }
 
-        let cfg = fetchConfig(url);
-        log.info(cfg);
+        let remote = parseRemoteAddress(url);
+
+        let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
+
+        let cp = child_process.execFile("rsync",
+            [`rsync://${remote.host}:${remote.port}/jerk/objects`, '--info=progress2',
+                '-E', '-hhh', '-r', '-u', '--delete-delay', '.jerk'],
+            (err, stdout, stderr) => {
+                if (!!err) log.log(err);
+                if (!!stdout) rsyncOutputProgressUpdate(stdout, bar);
+                if (!!stderr) log.log(stderr);
+            });
+
+        fetchConfig(url, (cfg) => {
+            Common.iterateStringKeyObject<string[]>(cfg.refs).forEach(v => {
+                let ref = repo.ref(v.key);
+                let val = v.value;
+                if (ref) {
+                    ref.name = val[1];
+                    ref.head = val[2];
+                    ref.time = parseInt(val[3]);
+                } else {
+                    repo.addRef(new Common.Ref(val[2], val[1], parseInt(val[3])));
+                }
+            });
+
+            cp.on('exit', (code: number, signal: string) => {
+                bar.tick(100);
+                bar.terminate();
+                log.success('pull finished successfully');
+            });
+        });
+    }
+
+    function fastForwardable(repo: Common.Repo, cfg: any): {
+        remoteRefs: string[];
+        changedRefs: string[];
+        remoteCommits: string[]
+    } {
+        var fastForwardable = true;
+        let refs = [];
+        let changedRefs = [];
+        let commits = [];
+        Common.iterateStringKeyObject<string[]>(cfg.refs).forEach(v => {
+            if (!fastForwardable) return;
+            let ref = repo.ref(v.key);
+            let val = v.value;
+            if (!ref) {
+                fastForwardable = false;
+                return;
+            }
+            refs.push(v.key);
+            if (ref.head !== val[2]) changedRefs.push(v.key);
+            if (ref.time !== parseInt(val[3])) fastForwardable = false;
+        });
+        if (!fastForwardable) {
+            log.error('fast-forward not available, pull remote changes and try again.');
+            return null;
+        }
+        Common.iterateStringKeyObject<string[]>(cfg.commits).forEach(v => {
+            if (!fastForwardable) return;
+            let commit = repo.commit(v.key);
+            let val = v.value;
+            if (!commit) {
+                fastForwardable = false;
+                return;
+            }
+            commits.push(v.key);
+            // ["Commit", this.id, this.message, this.authorName, this.authorEMail,
+            // this.parentId, this.time.toString(), JSON.stringify(this._contents),
+            // this._mergeOf, JSON.stringify(this.changed)]
+            if (commit.id !== val[1]) fastForwardable = false;
+            if (commit.message !== val[2]) fastForwardable = false;
+            if (commit.authorName !== val[3]) fastForwardable = false;
+            if (commit.authorEMail !== val[4]) fastForwardable = false;
+            if (commit.parentId !== val[5]) fastForwardable = false;
+            if (commit.time !== parseInt(val[6])) fastForwardable = false;
+            let data = commit.data();
+            if (data[7] !== val[7]) fastForwardable = false;
+            if (data[8] !== val[8]) fastForwardable = false;
+            if (data[9] !== val[9]) fastForwardable = false;
+        });
+        if (!fastForwardable) {
+            log.error('fast-forward not available, pull remote changes and try again.');
+            return null;
+        }
+        return { remoteRefs: refs, changedRefs: changedRefs, remoteCommits: commits };
+    }
+
+    export function pushJSON(remote: { host: string; port: number }, json: string, callback: Function) {
+        var cfg = '';
+        let req = http.request(
+            {
+                host: remote.host,
+                port: remote.port + 2,
+                path: '/push',
+                method: 'POST'
+            },
+            (res) => {
+                if (res.statusCode !== 200) {
+                    callback(null);
+                    return;
+                }
+                res.setEncoding('utf8');
+                res
+                    .on('data', (chunk: string) => {
+                        cfg += chunk;
+                    })
+                    .on('end', () => {
+                        callback(cfg);
+                    });
+            })
+            .on('error', (e) => {
+                log.error(e);
+                callback(null);
+            });
+        req.write(json);
+        req.end();
+    }
+
+    function uploadObjectsRsync(remote: { host: string; port: number }, callback: Function) {
+        let bar = new ProgressBar('  sync [:bar] :percent :etas', { total: 100, clear: true });
+        let cp = child_process.execFile("rsync",
+            [path.join('.jerk', 'objects'), '--info=progress2', '-E', '-hhh',
+                '-r', '-u', '--delete-delay', `rsync://${remote.host}:${remote.port}/jerk`],
+            (err, stdout, stderr) => {
+                if (!!err) log.log(err);
+                if (!!stdout) rsyncOutputProgressUpdate(stdout, bar);
+                if (!!stderr) log.log(stderr);
+            });
+        cp.on('exit', (code: number, signal: string) => {
+            bar.tick(100);
+            bar.terminate();
+            if (code === 0) return callback(true);
+            return callback(false);
+        });
+    }
+
+    function uploadObjectsHTTP(remote: { host: string; port: number }, callback: Function) {
+        log.error(`HTTP upload mode not implemented! Use ${colors.italic('rsync')} mode.`);
+        /*
+        let client = net.createConnection({ host: remote.host, port: remote.port + 4 }, () => {
+            log.success('connected to remote...');
+            //client.write();
+        });
+        client.on('data', (data) => {
+            console.log(data.toString());
+            client.end();
+        });
+        client.on('end', () => {
+            log.success('disconnected from remote');
+        });
+        */
+    }
+
+    function uploadObjects(remote: { host: string; port: number }, mode: string, callback: Function) {
+        if (mode === 'rsync') return uploadObjectsRsync(remote, callback);
+        if (mode === 'http') return uploadObjectsHTTP(remote, callback);
+        throw "Unknown mode type";
     }
 
     export function push(options: any) {
@@ -498,8 +687,63 @@ module CLI {
             return;
         }
 
-        let cfg = fetchConfig(url);
-        log.info(cfg);
+        var mode = conf.get('repo_' + repo.name + '.mode');
+        if (!mode) mode = 'rsync';
+        if (mode !== 'rsync' && mode !== 'http') {
+            log.error(`unknown connection mode. Supported modes are: ${colors.italic('rsync')} and ${colors.italic('http')}`);
+            return;
+        }
+
+        fetchConfig(url, (cfg) => {
+            cfg = JSON.parse(cfg);
+            let data = fastForwardable(repo, cfg);
+            if (!data) return;
+
+            let newCommits = repo.commits()
+                .map(x => (data.remoteCommits.indexOf(x.id) < 0) ? x : null)
+                .filter(x => !!x)
+                .map(x => x.data());
+            let newRefs = repo.refs()
+                .map(x => (data.remoteRefs.indexOf(x.name) < 0) ? x : null)
+                .filter(x => !!x)
+                .map(x => x.data());
+            let changedRefs = data.changedRefs
+                .map(x => repo.ref(x).data());
+
+            if (newCommits.length === 0 && newRefs.length === 0 && changedRefs.length === 0) {
+                return log.success('up-to-date!');
+            }
+
+            let refs = {};
+            let commits = {};
+            newRefs.concat(changedRefs).forEach(x => refs[x[1]] = x);
+            newCommits.forEach(x => commits[x[1]] = x);
+
+            let json = {
+                refs: refs,
+                commits: commits,
+                revision: cfg.revision
+            }
+
+            let remote = parseRemoteAddress(url);
+
+            let jsonPush = JSON.stringify(json);
+
+            pushJSON(remote, jsonPush, (res) => {
+                if (!res) {
+                    log.error('push connection failed');
+                    return;
+                }
+                if (res === 'OK') {
+                    uploadObjects(remote, mode, (res) => {
+                        if (res) return log.success('push finished successfully!');
+                        return log.error('uploading objects failed');
+                    });
+                    return;
+                }
+                log.error('remote:', res);
+            });
+        });
     }
 }
 
