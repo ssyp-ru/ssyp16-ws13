@@ -103,7 +103,7 @@ module Client {
         }
 
         result.repo.staged.forEach(v => {
-            if (all.indexOf(v) < 0) {
+            if (all.indexOf(v) < 0 && result.removedStaged.indexOf(v) < 0) {
                 log.warn(`staged file "${v}" removed`);
                 repo.unstage(v);
             }

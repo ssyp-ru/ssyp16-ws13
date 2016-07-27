@@ -62,11 +62,11 @@ describe("Hulk module", () => {
         var bf1 = new Buffer("Hello, Artyom! Jerk commit!");
         var firstFileObject = FS.fs().create(bf1);
         var firstHash = createHash('sha256').update(bf1).digest('hex');
-        nfs.writeFile(path.join('.jerk', 'objects', firstHash), bf1, { mode: 0o644 });
+        nfs.writeFile(path.join('.jerk', 'objects', firstHash), bf1);
         var bf2 = new Buffer("Hello, World! Jerk push!");
         var secondFileObject = FS.fs().create(bf1);
         var secondHash = createHash('sha256').update(bf2).digest('hex');
-        nfs.writeFile(path.join('.jerk', 'objects', secondHash), bf2, { mode: 0o644 });
+        nfs.writeFile(path.join('.jerk', 'objects', secondHash), bf2);
         var hunks: HunkExp.Hunk[] = [];
         var diff = new HunkExp.Diff(hunks);
         var words: Buffer[] = [];

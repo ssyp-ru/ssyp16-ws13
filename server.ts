@@ -1,6 +1,7 @@
 #!/usr/bin/node
 import * as child_process from "child_process";
 import * as nfs from 'fs';
+import * as fse from 'fs-extra';
 import * as http from "http";
 import * as path from 'path';
 import * as readline from 'readline';
@@ -14,7 +15,6 @@ import * as Format from './format';
 import * as glob from 'glob';
 import * as Moment from 'moment';
 let osenv = require('osenv');
-let mkdirp = require('mkdirp');
 let uuid = require('uuid');
 let xdgBasedir = require('xdg-basedir');
 let osTmpdir = require('os-tmpdir');
@@ -37,8 +37,6 @@ module Server {
     // Configstore options
     let user = (osenv.user() || uuid.v4()).replace(/\\/g, '');
     let configDir = xdgBasedir.config || path.join(osTmpdir(), user, '.config');
-    let defaultPathMode = 0o755;
-    let writeFileOptions = { mode: 0o644 };
 
     // Current host repo properties
     let repoPath = process.cwd();
@@ -91,7 +89,7 @@ module Server {
             });
 
             var json = JSON.stringify(config);
-            nfs.writeFileSync(path.join(this.jerkPath, 'config'), json, { mode: 0o644 });
+            fse.outputFileSync(path.join(this.jerkPath, 'config'), json);
         }
 
         protected _loadConfig() {
@@ -241,9 +239,9 @@ module Server {
         try {
             // make sure the folder exists as it
             // could have been deleted in the meantime
-            mkdirp.sync(path.dirname(configPath), defaultPathMode);
+            fse.ensureDirSync(path.dirname(configPath));
 
-            writeFileAtomic.sync(configPath, repoConfig, writeFileOptions);
+            writeFileAtomic.sync(configPath, repoConfig);
         } catch (err) {
             // improve the message of permission errors
             if (err.code === 'EACCES') {

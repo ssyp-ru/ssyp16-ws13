@@ -113,7 +113,7 @@ module CLI {
         };
 
         var json = JSON.stringify(nconfig);
-        fs.writeFileSync(cfg, json, { mode: 0o644 });
+        fse.outputFileSync(cfg, json);
 
         let repo = new Common.Repo(process.cwd());
         repo.saveConfig();
@@ -157,7 +157,7 @@ module CLI {
                 res
                     .on('data', (chunk: Uint8Array) => {
                         let buf = new Buffer(chunk);
-                        fs.appendFileSync(cfg, buf, { mode: 0o644 });
+                        fs.appendFileSync(cfg, buf);
                     })
                     .on('end', () => {
                         cloneOnConfigFetched(cfg);

@@ -1,16 +1,18 @@
 /**
  * Common code for client and server
  */
-import * as fse from 'fs-extra';
 import * as nfs from 'fs';
-import * as path from 'path';
+import * as fse from 'fs-extra';
+import {FSFunctions} from './fsFunctions';
 import fs = require('./fs');
+import * as path from 'path';
 import * as logSymbols from 'log-symbols';
 import * as Logger from './log';
 import * as colors from 'colors/safe';
 let parents = require('parents');
 let createHash = require('sha.js');
 
+let fsf = new FSFunctions();
 let log = new Logger.Logger();
 
 export abstract class Serializable {
@@ -215,6 +217,10 @@ export class StringMap<T> {
 
     get(key: string): T {
         return this.data[key];
+    }
+
+    del(key: string) {
+        delete this.data[key];
     }
 
     iter(): { key: string, value: T }[] {
@@ -516,8 +522,12 @@ export class Repo {
         }
 
         this._staged.forEach(v => {
-            var stats = nfs.statSync(v);
-            var buf = nfs.readFileSync(v);
+            let stats = fsf.lstat(v);
+            if (!stats) {
+                return contents.del(v);
+            }
+
+            let buf = nfs.readFileSync(v);
 
             var fo: fs.FileObject;
             var foFound = this._fs.resolveObjectByContents(buf);
@@ -650,14 +660,14 @@ export class Repo {
         if (!commit) return;
 
         var json = JSON.stringify(commit.data());
-        nfs.writeFileSync(path.join(this.jerkPath, 'HEAD'), json, { mode: 0o644 });
+        fse.outputFileSync(path.join(this.jerkPath, 'HEAD'), json);
     }
 
     writeORIGHEADCommitData(commit: Commit) {
         if (!commit) return;
 
         var json = JSON.stringify(commit.data());
-        nfs.writeFileSync(path.join(this.jerkPath, 'ORIG_HEAD'), json, { mode: 0o644 });
+        fse.outputFileSync(path.join(this.jerkPath, 'ORIG_HEAD'), json);
     }
 }
 
