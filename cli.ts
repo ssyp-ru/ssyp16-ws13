@@ -143,7 +143,7 @@ module CLI {
                 let cfg = path.join('.jerk', 'config');
                 fse.ensureFileSync(cfg);
 
-                let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
+                let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100 });
                 let cp = child_process.execFile("rsync",
                     [`rsync://${remote.host}:${remote.port}/jerk/objects`, '--info=progress2',
                         '-E', '-hhh', '-r', '.jerk'],
@@ -521,7 +521,7 @@ module CLI {
 
         let remote = parseRemoteAddress(url);
 
-        let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
+        let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100 });
 
         let cp = child_process.execFile("rsync",
             [`rsync://${remote.host}:${remote.port}/jerk/objects`, '--info=progress2',
@@ -639,7 +639,7 @@ module CLI {
     }
 
     function uploadObjectsRsync(remote: { host: string; port: number }, callback: Function) {
-        let bar = new ProgressBar('  sync [:bar] :percent :etas', { total: 100, clear: true });
+        let bar = new ProgressBar('  sync [:bar] :percent :etas', { total: 100 });
         let cp = child_process.execFile("rsync",
             [path.join('.jerk', 'objects'), '--info=progress2', '-E', '-hhh',
                 '-r', '-u', '--delete-delay', `rsync://${remote.host}:${remote.port}/jerk`],
