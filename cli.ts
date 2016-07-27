@@ -34,9 +34,9 @@ module CLI {
         let s = stdout.toString().trim().split('\r').pop();
         if (rsyncPercentage.test(s)) {
             let perc = parseInt(rsyncPercentage.exec(s)[1]);
-            return bar.tick(perc);
+            return bar.update(perc / 100);
         }
-        return bar.curr;
+        return bar.tick(0);
     }
 
     function cwdRepo(): Common.Repo {
@@ -121,9 +121,11 @@ module CLI {
     }
 
     function cloneOnObjectsFetched() {
+        log.info('objects fetched successfully!');
         let repo = new Common.Repo(process.cwd());
         let commit = repo.lastCommit;
         if (!!commit) Client.checkout(repo, commit, repo.currentBranch);
+        log.success('repository cloned successfully!');
     }
 
     export function clone(url: string, options: any) {
@@ -143,15 +145,15 @@ module CLI {
                 let cfg = path.join('.jerk', 'config');
                 fse.ensureFileSync(cfg);
 
-                let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100 });
-                let cp = child_process.execFile("rsync",
+                let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
+                let cp = child_process.spawn("rsync",
                     [`rsync://${remote.host}:${remote.port}/jerk/objects`, '--info=progress2',
-                        '-E', '-hhh', '-r', '.jerk'],
-                    (err, stdout, stderr) => {
-                        if (!!err) log.log(err);
-                        rsyncOutputProgressUpdate(stdout, bar);
-                        if (!!stderr) log.log(stderr);
-                    });
+                        '-E', '-hhh', '-r', '.jerk']);
+                cp.stdout.on('data', (stdout) => {
+                    rsyncOutputProgressUpdate(stdout, bar);
+                });
+                let cpInterval = setInterval(() => bar.tick(0), 100);
+
                 res
                     .on('data', (chunk: Uint8Array) => {
                         let buf = new Buffer(chunk);
@@ -162,6 +164,7 @@ module CLI {
 
                         cp.on('exit', () => {
                             bar.tick(100);
+                            clearInterval(cpInterval);
                             cloneOnObjectsFetched();
                         });
                     });
@@ -521,16 +524,15 @@ module CLI {
 
         let remote = parseRemoteAddress(url);
 
-        let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100 });
+        let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
 
-        let cp = child_process.execFile("rsync",
+        let cp = child_process.spawn("rsync",
             [`rsync://${remote.host}:${remote.port}/jerk/objects`, '--info=progress2',
-                '-E', '-hhh', '-r', '-u', '--delete-delay', '.jerk'],
-            (err, stdout, stderr) => {
-                if (!!err) log.log(err);
-                rsyncOutputProgressUpdate(stdout, bar);
-                if (!!stderr) log.log(stderr);
-            });
+                '-E', '-hhh', '-r', '-u', '--delete-delay', '.jerk']);
+        cp.stdout.on('data', (stdout) => {
+            rsyncOutputProgressUpdate(stdout, bar);
+        });
+        let cpInterval = setInterval(() => bar.tick(0), 100);
 
         fetchConfig(url, (cfg) => {
             Common.iterateStringKeyObject<string[]>(cfg.refs).forEach(v => {
@@ -547,6 +549,7 @@ module CLI {
 
             cp.on('exit', (code: number, signal: string) => {
                 bar.tick(100);
+                clearInterval(cpInterval);
                 log.success('pull finished successfully');
             });
         });
@@ -639,17 +642,18 @@ module CLI {
     }
 
     function uploadObjectsRsync(remote: { host: string; port: number }, callback: Function) {
-        let bar = new ProgressBar('  sync [:bar] :percent :etas', { total: 100 });
-        let cp = child_process.execFile("rsync",
+        let bar = new ProgressBar('  sync [:bar] :percent :etas', { total: 100, clear: true });
+        let cp = child_process.spawn("rsync",
             [path.join('.jerk', 'objects'), '--info=progress2', '-E', '-hhh',
-                '-r', '-u', '--delete-delay', `rsync://${remote.host}:${remote.port}/jerk`],
-            (err, stdout, stderr) => {
-                if (!!err) log.log(err);
-                rsyncOutputProgressUpdate(stdout, bar);
-                if (!!stderr) log.log(stderr);
-            });
+                '-r', '-u', '--delete-delay', `rsync://${remote.host}:${remote.port}/jerk`]);
+        cp.stdout.on('data', (stdout) => {
+            rsyncOutputProgressUpdate(stdout, bar);
+        });
+        let cpInterval = setInterval(() => bar.tick(0), 100);
+
         cp.on('exit', (code: number, signal: string) => {
             bar.tick(100);
+            clearInterval(cpInterval);
             if (code === 0) return callback(true);
             return callback(false);
         });
