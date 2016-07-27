@@ -1,4 +1,4 @@
-#!/usr/bin/node
+#!/usr/bin/env node
 import * as colors from 'colors/safe';
 import * as child_process from "child_process";
 import * as http from "http";
