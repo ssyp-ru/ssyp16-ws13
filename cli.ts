@@ -149,7 +149,7 @@ module CLI {
                         '-E', '-hhh', '-r', '.jerk'],
                     (err, stdout, stderr) => {
                         if (!!err) log.log(err);
-                        if (!!stdout) rsyncOutputProgressUpdate(stdout, bar);
+                        rsyncOutputProgressUpdate(stdout, bar);
                         if (!!stderr) log.log(stderr);
                     });
                 res
@@ -528,7 +528,7 @@ module CLI {
                 '-E', '-hhh', '-r', '-u', '--delete-delay', '.jerk'],
             (err, stdout, stderr) => {
                 if (!!err) log.log(err);
-                if (!!stdout) rsyncOutputProgressUpdate(stdout, bar);
+                rsyncOutputProgressUpdate(stdout, bar);
                 if (!!stderr) log.log(stderr);
             });
 
@@ -645,7 +645,7 @@ module CLI {
                 '-r', '-u', '--delete-delay', `rsync://${remote.host}:${remote.port}/jerk`],
             (err, stdout, stderr) => {
                 if (!!err) log.log(err);
-                if (!!stdout) rsyncOutputProgressUpdate(stdout, bar);
+                rsyncOutputProgressUpdate(stdout, bar);
                 if (!!stderr) log.log(stderr);
             });
         cp.on('exit', (code: number, signal: string) => {
