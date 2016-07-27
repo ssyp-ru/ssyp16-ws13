@@ -61,16 +61,10 @@ module Client {
     }
 
     export function init(path: string) {
-        fs.stat(path, (err, stats) => {
-            if (!!err || !stats) {
-                fs.mkdirSync(path);
-            }
-
-            var repo = new Common.Repo(path, true);
-            if (!repo) {
-                log.error("Repository initialization failed!");
-            }
-        });
+        var repo = new Common.Repo(path, true);
+        if (!repo) {
+            log.error("Repository initialization failed!");
+        }
     }
 
     export function status(repo: Common.Repo): WorkingTreeStatus {
@@ -109,7 +103,7 @@ module Client {
         }
 
         result.repo.staged.forEach(v => {
-            if (all.indexOf(v) < 0) {
+            if (all.indexOf(v) < 0 && result.removedStaged.indexOf(v) < 0) {
                 log.warn(`staged file "${v}" removed`);
                 repo.unstage(v);
             }
@@ -149,8 +143,7 @@ module Client {
         }
 
         let dTime = new Date(tf.time);
-        let writeOptions = { flag: 'w' };
-        fs.writeFileSync(tf.path, fo.buffer(), writeOptions);
+        fse.outputFileSync(tf.path, fo.buffer());
         fs.utimesSync(tf.path, dTime, dTime);
     }
 
@@ -161,7 +154,6 @@ module Client {
             return;
         }
 
-        let writeOptions = { flag: 'w' };
         res.modified
             .concat(res.modifiedStaged)
             .forEach(v => {
@@ -173,7 +165,7 @@ module Client {
                 var tf = commit.file(v);
                 var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
 
-                fs.writeFileSync(v, fo.buffer(), writeOptions);
+                fse.outputFileSync(v, fo.buffer());
                 fs.utimesSync(v, new Date(tf.time), new Date(tf.time));
                 repo.unstage(v);
             });
@@ -195,7 +187,7 @@ module Client {
 
                 var tf = commit.file(v);
                 var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
-                fs.writeFileSync(v, fo.buffer(), writeOptions);
+                fse.outputFileSync(v, fo.buffer());
                 fs.utimesSync(v, new Date(tf.time), new Date(tf.time));
             });
     }

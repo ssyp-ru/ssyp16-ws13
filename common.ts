@@ -2,14 +2,17 @@
  * Common code for client and server
  */
 import * as nfs from 'fs';
-import * as path from 'path';
+import * as fse from 'fs-extra';
+import {FSFunctions} from './fsFunctions';
 import fs = require('./fs');
+import * as path from 'path';
 import * as logSymbols from 'log-symbols';
 import * as Logger from './log';
 import * as colors from 'colors/safe';
 let parents = require('parents');
 let createHash = require('sha.js');
 
+let fsf = new FSFunctions();
 let log = new Logger.Logger();
 
 export abstract class Serializable {
@@ -216,6 +219,10 @@ export class StringMap<T> {
         return this.data[key];
     }
 
+    del(key: string) {
+        delete this.data[key];
+    }
+
     iter(): { key: string, value: T }[] {
         return iterateStringKeyObject<T>(this.data);
     }
@@ -262,7 +269,7 @@ export class Repo {
      * @param init allow creation of new repo or not
      * @param quiet silence warnings and notices
      */
-    constructor(public root: string, init: boolean = false, quiet: boolean = false) {
+    constructor(public root: string, init: boolean = false) {
         this._defaultBranchName = 'master';
         this._currentBranchName = 'master';
         this._detachedHEAD = null;
@@ -273,22 +280,20 @@ export class Repo {
         if (!this.local) return;
 
         this._fs = fs.fs();
-        var stat: nfs.Stats;
-        try {
-            stat = nfs.statSync(this.jerkPath);
-        } catch (e) { }
-        if (!stat || !stat.isDirectory()) {
+
+        if (!nfs.existsSync(path.join(this.jerkPath, 'config'))) {
             if (!init) {
+                fse.deleteSync(this.jerkPath);
+
                 throw (colors.dim('JERK') + ' ' + logSymbols.error + " is not a repository!");
             }
-            nfs.mkdirSync(this.jerkPath, 0o755);
+
+            fse.ensureDirSync(this.jerkPath);
 
             this.createBranch('master', null);
-
             this.saveConfig();
 
             log.success("repository created successfully!");
-            return;
         }
 
         this._loadConfig();
@@ -313,7 +318,7 @@ export class Repo {
         });
 
         var json = JSON.stringify(config);
-        nfs.writeFileSync(path.join(this.jerkPath, 'config'), json, { mode: 0o644 });
+        fse.outputFileSync(path.join(this.jerkPath, 'config'), json);
         this.writeHEADCommitData();
     }
 
@@ -464,6 +469,8 @@ export class Repo {
      */
     refs<T extends Ref>(): T[] { return this._refs.iterValues() as T[]; }
 
+    addRef<T extends Ref>(v: T) { this._refs.put(v.name, v); }
+
     /**
      * Staged file paths to commit
      */
@@ -515,8 +522,12 @@ export class Repo {
         }
 
         this._staged.forEach(v => {
-            var stats = nfs.statSync(v);
-            var buf = nfs.readFileSync(v);
+            let stats = fsf.lstat(v);
+            if (!stats) {
+                return contents.del(v);
+            }
+
+            let buf = nfs.readFileSync(v);
 
             var fo: fs.FileObject;
             var foFound = this._fs.resolveObjectByContents(buf);
@@ -615,14 +626,6 @@ export class Repo {
         return tag;
     }
 
-    /**
-     * Fetch remote repo metadata and create remote repo implementation class matching it
-     * @param url remote URL
-     */
-    createRemoteRepo(url: string, quiet: boolean = false): Repo {
-        return new RemoteRepo(url, false, quiet);
-    }
-
     get local(): boolean {
         return true;
     }
@@ -649,24 +652,14 @@ export class Repo {
         if (!commit) return;
 
         var json = JSON.stringify(commit.data());
-        nfs.writeFileSync(path.join(this.jerkPath, 'HEAD'), json, { mode: 0o644 });
+        fse.outputFileSync(path.join(this.jerkPath, 'HEAD'), json);
     }
 
     writeORIGHEADCommitData(commit: Commit) {
         if (!commit) return;
 
         var json = JSON.stringify(commit.data());
-        nfs.writeFileSync(path.join(this.jerkPath, 'ORIG_HEAD'), json, { mode: 0o644 });
-    }
-}
-
-class RemoteRepo extends Repo {
-    constructor(rootPath: string, init: boolean = false, quiet: boolean = false) {
-        super(rootPath, false, quiet);
-    }
-
-    get local(): boolean {
-        return false;
+        fse.outputFileSync(path.join(this.jerkPath, 'ORIG_HEAD'), json);
     }
 }
 

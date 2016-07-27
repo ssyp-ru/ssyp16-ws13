@@ -1,6 +1,7 @@
 #!/usr/bin/node
 import * as child_process from "child_process";
 import * as nfs from 'fs';
+import * as fse from 'fs-extra';
 import * as http from "http";
 import * as path from 'path';
 import * as readline from 'readline';
@@ -14,7 +15,6 @@ import * as Format from './format';
 import * as glob from 'glob';
 import * as Moment from 'moment';
 let osenv = require('osenv');
-let mkdirp = require('mkdirp');
 let uuid = require('uuid');
 let xdgBasedir = require('xdg-basedir');
 let osTmpdir = require('os-tmpdir');
@@ -37,13 +37,11 @@ module Server {
     // Configstore options
     let user = (osenv.user() || uuid.v4()).replace(/\\/g, '');
     let configDir = xdgBasedir.config || path.join(osTmpdir(), user, '.config');
-    let defaultPathMode = 0o755;
-    let writeFileOptions = { mode: 0o644 };
 
     // Current host repo properties
     let repoPath = process.cwd();
     let repoName = repoPath.split(path.sep).pop();
-    let repoConfig = 'use chroot = no\n\n[git]\n\tpath = ' + repoPath;
+    let repoConfig = `use chroot = no\nread only = no\n\n[jerk]\n\tpath = ${repoPath}\n\tcomment = JERK ${repoName} repository`;
     let configPath = path.join(configDir, 'jerk-server', repoName);
 
     class ServerRepo extends Common.Repo {
@@ -91,7 +89,7 @@ module Server {
             });
 
             var json = JSON.stringify(config);
-            nfs.writeFileSync(path.join(this.jerkPath, 'config'), json, { mode: 0o644 });
+            fse.outputFileSync(path.join(this.jerkPath, 'config'), json);
         }
 
         protected _loadConfig() {
@@ -197,11 +195,13 @@ module Server {
             });
 
             req.on('end', () => {
+                // log.info('Received push request');
                 try {
                     let data = JSON.parse(body);
                     return handlePush(data, req, res);
                 } catch (er) {
                     res.statusCode = 400;
+                    log.warn('Push failed');
                     return res.end(`error: ${er.message}`);
                 }
             });
@@ -209,17 +209,20 @@ module Server {
     }
 
     function handlePush(data: any, req: http.IncomingMessage, res: http.ServerResponse) {
-        log.info(JSON.stringify(data));
+        // log.info(JSON.stringify(data));
         if (!data.revision && data.revision !== 0) {
+            log.warn('Push rejected, revision not specified');
             return res.end('rejected, revision not specified');
         }
         if (data.revision !== repo.revision) {
+            log.info('Push rejected, revision mismatch');
             return res.end('rejected, revision mismatch');
         }
         if (!!data.commits) {
             try {
                 repo.applyCommits(Common.loadCommitsFromObject(data.commits, null));
             } catch (e) {
+                log.error(e);
                 return res.end(e);
             }
         }
@@ -227,6 +230,8 @@ module Server {
             repo.applyRefs(Common.loadRefsFromObject(data.refs));
         }
         repo.revision++;
+        log.success('push successful');
+        return res.end('OK');
     }
 
     export function createRSYNCConfig() {
@@ -234,9 +239,9 @@ module Server {
         try {
             // make sure the folder exists as it
             // could have been deleted in the meantime
-            mkdirp.sync(path.dirname(configPath), defaultPathMode);
+            fse.ensureDirSync(path.dirname(configPath));
 
-            writeFileAtomic.sync(configPath, repoConfig, writeFileOptions);
+            writeFileAtomic.sync(configPath, repoConfig);
         } catch (err) {
             // improve the message of permission errors
             if (err.code === 'EACCES') {
@@ -248,13 +253,11 @@ module Server {
     }
 
     export function startRSYNCDaemon() {
-        var out = nfs.openSync('./out.log', 'a');
-        var err = nfs.openSync('./out.log', 'a');
         rsyncDaemon = child_process.spawn('rsync',
             ['--daemon', '-v', '--no-detach', '--port=19246', '--config=' + configPath],
             {
                 detached: true,
-                stdio: ['ignore', out, err]
+                stdio: ['ignore', 'ignore', 'ignore']
             });
         // rsyncDaemon.unref();
         let hostname = '0.0.0.0';
@@ -262,16 +265,6 @@ module Server {
         server.listen(port, hostname, () => {
             log.success(`Server running at port ${port}...`);
         });
-        /*
-        var bar = new ProgressBar('  sync [:bar] :percent :etas', { total: 100 });
-        var timer = setInterval(function () {
-            bar.tick();
-            if (bar.complete) {
-                console.log('\ncomplete\n');
-                clearInterval(timer);
-            }
-        }, 100);
-        */
     }
 
     export function loopRSYNCDaemon() {

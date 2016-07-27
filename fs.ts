@@ -178,12 +178,12 @@ module FileSystem {
         }
         create(blob: Buffer): FileObject {
             var hash = createHash('sha256').update(blob).digest('hex');
-            nfs.writeFileSync(path.join(this.root, hash), blob, { mode: 0o644 });
+            fse.outputFileSync(path.join(this.root, hash), blob);
             return new FObject(hash, this);
         }
         symlink(target: string): SymlinkObject {
             var hash = createHash('sha256').update(target, 'utf8').digest('hex');
-            nfs.writeFileSync(path.join(this.root, hash + ".symlink"), target, { encoding: 'utf8', mode: 0o644 });
+            fse.outputFileSync(path.join(this.root, hash + ".symlink"), target);
             return new SObject(hash, this);
         }
         remove(id: string): boolean {

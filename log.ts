@@ -3,14 +3,14 @@ import * as colors from 'colors/safe';
 
 let name = colors.dim('JERK');
 export class Logger {
-    private _quiet = false;
+    private static _quiet = false;
 
     silence() {
-        this._quiet = true;
+        Logger._quiet = true;
     }
 
     quiet(v: boolean) {
-        this._quiet = v;
+        Logger._quiet = v;
     }
 
     error(...args: any[]) {
@@ -22,12 +22,12 @@ export class Logger {
     }
 
     success(...args: any[]) {
-        if (this._quiet) return;
+        if (Logger._quiet) return;
         this.log(...[name, logSymbols.success].concat(args));
     }
 
     info(...args: any[]) {
-        if (this._quiet) return;
+        if (Logger._quiet) return;
         this.log(...[name, logSymbols.info].concat(args));
     }
 
