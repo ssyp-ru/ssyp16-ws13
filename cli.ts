@@ -122,7 +122,8 @@ module CLI {
 
     function cloneOnObjectsFetched() {
         let repo = new Common.Repo(process.cwd());
-        Client.checkout(repo, repo.lastCommit, repo.currentBranch);
+        let commit = repo.lastCommit;
+        if (!!commit) Client.checkout(repo, commit, repo.currentBranch);
     }
 
     export function clone(url: string, options: any) {
@@ -151,7 +152,7 @@ module CLI {
                 res
                     .on('data', (chunk: Uint8Array) => {
                         let buf = new Buffer(chunk);
-                        fs.writeFileSync(cfg, buf, { mode: 0o644 });
+                        fs.appendFileSync(cfg, buf, { mode: 0o644 });
                     })
                     .on('end', () => {
                         cloneOnConfigFetched(cfg);
