@@ -269,7 +269,7 @@ export class Repo {
      * @param init allow creation of new repo or not
      * @param quiet silence warnings and notices
      */
-    constructor(public root: string, init: boolean = false, quiet: boolean = false) {
+    constructor(public root: string, init: boolean = false) {
         this._defaultBranchName = 'master';
         this._currentBranchName = 'master';
         this._detachedHEAD = null;
@@ -626,14 +626,6 @@ export class Repo {
         return tag;
     }
 
-    /**
-     * Fetch remote repo metadata and create remote repo implementation class matching it
-     * @param url remote URL
-     */
-    createRemoteRepo(url: string, quiet: boolean = false): Repo {
-        return new RemoteRepo(url, false, quiet);
-    }
-
     get local(): boolean {
         return true;
     }
@@ -668,16 +660,6 @@ export class Repo {
 
         var json = JSON.stringify(commit.data());
         fse.outputFileSync(path.join(this.jerkPath, 'ORIG_HEAD'), json);
-    }
-}
-
-class RemoteRepo extends Repo {
-    constructor(rootPath: string, init: boolean = false, quiet: boolean = false) {
-        super(rootPath, false, quiet);
-    }
-
-    get local(): boolean {
-        return false;
     }
 }
 
