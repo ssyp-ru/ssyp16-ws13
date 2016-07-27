@@ -1,14 +1,14 @@
-/*import * as assert from 'assert'
+import * as assert from 'assert'
 import * as Hulk from '../hulk'
 
 describe("Hulk", () => {
     describe("#diff", () => {
         it("returns null on equal buffers", () => {
             var buffer = new Buffer("a\nb\nc\nd\n");
-            var diff = Hulk.Diff.diffFiles(buffer, buffer);
+            var diff = Hulk.Diff.diff(buffer, buffer);
             assert.equal(diff, null);
         });
-        it("correctly removes strings when they are not needed", () => {
+       it("correctly removes strings when they are not needed", () => {
             var first = "a\nb\nc\nd\n", second = "a\nb\nc\n";
             var firstBuffer = new Buffer(first), secondBuffer = new Buffer(second);
             var diff = Hulk.Diff.diff(firstBuffer, secondBuffer);
@@ -28,4 +28,4 @@ describe("Hulk", () => {
             assert.fail();
         });
     });
-});*/
+});

@@ -1,15 +1,15 @@
 class LcsProvider {
-    m = new Map<string, CommonElement[]>();
+    private memoize = new Map<string, CommonElement[]>();
 
     lcs(first: string[], second: string[], firstLen?: number, secondLen?: number): CommonElement[] {
         if (firstLen === undefined) { firstLen = first.length; }
         if (secondLen === undefined) { secondLen = second.length; }
         var key = `__${firstLen}__${secondLen}__${first}__${second}`;
-        if (!!m.has(key)) {
-            return m.get(key);
+        if (!!this.memoize.has(key)) {
+            return this.memoize.get(key);
         } else {
             var result = this._lcs(first, second, firstLen, secondLen);
-            m.set(key, result);
+            this.memoize.set(key, result);
             return result;
         }
     }
@@ -24,15 +24,12 @@ class LcsProvider {
         } else {
             var _lcs1 = this.lcs(first, second, firstLen - 1, secondLen);
             var _lcs2 = this.lcs(second, first, secondLen - 1, firstLen);
-            if (Math.max(_lcs1.length, _lcs2.length) == _lcs2.length) {
-                return _lcs2;
-            }
-            return _lcs1;
+            return _lcs1 < _lcs2 ? _lcs2 : _lcs1;
         }
     }
 }
 
-enum HunkOperation { Add, Remove };
+export enum HunkOperation { Add, Remove };
 
 interface CommonElement {
     value: string;
@@ -62,18 +59,23 @@ export class Diff {
 
     constructor(hunks: Hunk[]) { this._hunks = hunks.sort((a, b) => a.line - b.line); }
 
-    static Diff(leftBuffer: Buffer, rightBuffer: Buffer): Diff {
+    static diff(leftBuffer: Buffer, rightBuffer: Buffer): Diff {
         var leftBufferStr = leftBuffer.toString().split("\n");
         var rightBufferStr = leftBuffer.toString().split("\n");
+        
         if (leftBufferStr == rightBufferStr) return null;
 
         var hunks: Hunk[];
         var lcs = new LcsProvider;
         var commonElements = lcs.lcs(leftBufferStr, rightBufferStr);
         commonElements.push({ value: "", firstIndex: leftBufferStr.length, secondIndex: rightBufferStr.length });
-
-        while (true) {
-            break;
+        var i = 0;
+        var fp = 0,
+            sp = 0;
+        while (i < commonElements.length) {
+             while (fp < commonElements[i].firstIndex) { hunks.push(new Hunk(fp, leftBufferStr[fp++], HunkOperation.Remove)); }
+             while (sp < commonElements[i].secondIndex) { hunks.push(new Hunk(sp, leftBufferStr[sp++], HunkOperation.Add)); }
+             i++;
         }
 
 
