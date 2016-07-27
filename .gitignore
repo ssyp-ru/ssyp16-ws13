@@ -2,8 +2,6 @@
 *.js.map
 
 .vscode/
-!.vscode/launch.json
-!.vscode/tasks.json
 
 *.log
 !node_modules/**/*.js
