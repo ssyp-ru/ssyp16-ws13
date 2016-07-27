@@ -1,32 +1,37 @@
-class LcsProvider {
+export class LcsProvider {
     private memoize = new Map<string, CommonElement[]>();
 
-    lcs(first: string[], second: string[], firstLen?: number, secondLen?: number): CommonElement[] {
-        if (firstLen === undefined) { firstLen = first.length; }
-        if (secondLen === undefined) { secondLen = second.length; }
-        var key = `__${firstLen}__${secondLen}__${first}__${second}`;
+    lcs(firstLen?: number, secondLen?: number): CommonElement[] {
+        if (firstLen === undefined) { firstLen = this.first.length; }
+        if (secondLen === undefined) { secondLen = this.second.length; }
+        var key = `__${firstLen}__${secondLen}__`;
         if (!!this.memoize.has(key)) {
             return this.memoize.get(key);
         } else {
-            var result = this._lcs(first, second, firstLen, secondLen);
+            var result = this._lcs(firstLen, secondLen);
             this.memoize.set(key, result);
             return result;
         }
     }
-    private _lcs(first: string[], second: string[], firstLen: number, secondLen: number): CommonElement[] {
+    private _lcs(firstLen: number, secondLen: number): CommonElement[] {
         if (!firstLen || !secondLen) {
             return [];
         }
-        var lastFirstSymbol = first[firstLen - 1];
-        var lastSecondSymbol = second[secondLen - 1];
+        var lastFirstSymbol = this.first[firstLen - 1];
+        var lastSecondSymbol = this.second[secondLen - 1];
         if (lastFirstSymbol == lastSecondSymbol) {
-            return (this.lcs(first, second, firstLen - 1, secondLen - 1).concat([{ value: lastFirstSymbol, firstIndex: firstLen - 1, secondIndex: secondLen - 1 }]));
+            return (this.lcs(firstLen - 1, secondLen - 1).concat([
+                { value: lastFirstSymbol, firstIndex: firstLen - 1, secondIndex: secondLen - 1 }
+            ]));
+
         } else {
-            var _lcs1 = this.lcs(first, second, firstLen - 1, secondLen);
-            var _lcs2 = this.lcs(second, first, secondLen - 1, firstLen);
-            return _lcs1 < _lcs2 ? _lcs2 : _lcs1;
+            var _lcs1 = this.lcs(firstLen - 1, secondLen);
+            var _lcs2 = this.lcs(firstLen, secondLen - 1);
+            return _lcs1.length < _lcs2.length ? _lcs2 : _lcs1;
         }
     }
+
+    constructor (public first: string[], public second: string[]) {}
 }
 
 export enum HunkOperation { Add, Remove };
@@ -51,7 +56,38 @@ class Hunk {
 
 
 export class Diff {
-    apply(buff: Buffer) { throw "Not implemented" }
+    apply(buff: Buffer) {
+        if (this._hunks.length == 0) return buff;
+        var strToReturn = "";
+        var bufInStr = buff.toString("utf8");
+        var posInString = 0;
+        var posOfLine = -1;
+        var curLine = 0;
+        var j;
+        var i;
+        for (i = 0; i < this._hunks.length; i++) {
+            while (curLine < this._hunks[i].line) {
+                posOfLine++;
+                if (bufInStr[posOfLine + 1] == "\n") {
+                    curLine++;
+                    posOfLine += 2;
+                }
+            }
+            for (j = posInString; j < posOfLine; j++) {
+                strToReturn += bufInStr[j];
+            }
+            if (this._hunks[i].type = HunkOperation.Add) {
+                strToReturn += this._hunks[i].value + "\n";
+            } else {
+                posInString += this._hunks[i].value.length + 2;
+                curLine++;
+            }
+        }
+        for (i = posInString; i < bufInStr.length; i++) {
+            strToReturn += bufInStr[i];
+        }
+        return new Buffer(strToReturn, "utf8");
+    }
 
     private _hunks: Hunk[];
 
@@ -61,24 +97,23 @@ export class Diff {
 
     static diff(leftBuffer: Buffer, rightBuffer: Buffer): Diff {
         var leftBufferStr = leftBuffer.toString().split("\n");
-        var rightBufferStr = leftBuffer.toString().split("\n");
-        
-        if (leftBufferStr == rightBufferStr) return null;
+        var rightBufferStr = rightBuffer.toString().split("\n");
 
-        var hunks: Hunk[];
-        var lcs = new LcsProvider;
-        var commonElements = lcs.lcs(leftBufferStr, rightBufferStr);
+        var hunks: Hunk[] = [];
+        var lcsProvider = new LcsProvider(leftBufferStr, rightBufferStr);
+        var commonElements = lcsProvider.lcs();
         commonElements.push({ value: "", firstIndex: leftBufferStr.length, secondIndex: rightBufferStr.length });
         var i = 0;
         var fp = 0,
             sp = 0;
         while (i < commonElements.length) {
              while (fp < commonElements[i].firstIndex) { hunks.push(new Hunk(fp, leftBufferStr[fp++], HunkOperation.Remove)); }
-             while (sp < commonElements[i].secondIndex) { hunks.push(new Hunk(sp, leftBufferStr[sp++], HunkOperation.Add)); }
+             while (sp < commonElements[i].secondIndex) { hunks.push(new Hunk(fp, rightBufferStr[sp++], HunkOperation.Add)); }
              i++;
+             fp += 1;
+             sp += 1;
         }
-
-
+        if (hunks.length == 0) { return null; }
         return new Diff(hunks);
     }
 }

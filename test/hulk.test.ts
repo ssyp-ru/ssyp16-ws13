@@ -21,11 +21,7 @@ describe("Hulk", () => {
             var diff = Hulk.Diff.diff(new Buffer(first), new Buffer(second));
             assert.ok(!diff);
         });
-        it("changes one string to another", () => {
-            assert.fail();
-        });
-        it("adds strings when they are provided in new file", () => {
-            assert.fail();
-        });
+        it("changes one string to another");
+        it("adds strings when they are provided in new file");
     });
 });
