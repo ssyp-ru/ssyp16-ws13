@@ -61,16 +61,10 @@ module Client {
     }
 
     export function init(path: string) {
-        fs.stat(path, (err, stats) => {
-            if (!!err || !stats) {
-                fs.mkdirSync(path);
-            }
-
-            var repo = new Common.Repo(path, true);
-            if (!repo) {
-                log.error("Repository initialization failed!");
-            }
-        });
+        var repo = new Common.Repo(path, true);
+        if (!repo) {
+            log.error("Repository initialization failed!");
+        }
     }
 
     export function status(repo: Common.Repo): WorkingTreeStatus {

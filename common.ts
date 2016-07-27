@@ -1,6 +1,7 @@
 /**
  * Common code for client and server
  */
+import * as fse from 'fs-extra';
 import * as nfs from 'fs';
 import * as path from 'path';
 import fs = require('./fs');
@@ -273,22 +274,20 @@ export class Repo {
         if (!this.local) return;
 
         this._fs = fs.fs();
-        var stat: nfs.Stats;
-        try {
-            stat = nfs.statSync(this.jerkPath);
-        } catch (e) { }
-        if (!stat || !stat.isDirectory()) {
+
+        if (!nfs.existsSync(path.join(this.jerkPath, 'config'))) {
             if (!init) {
+                fse.deleteSync(this.jerkPath);
+
                 throw (colors.dim('JERK') + ' ' + logSymbols.error + " is not a repository!");
             }
-            nfs.mkdirSync(this.jerkPath, 0o755);
+
+            fse.ensureDirSync(this.jerkPath);
 
             this.createBranch('master', null);
-
             this.saveConfig();
 
             log.success("repository created successfully!");
-            return;
         }
 
         this._loadConfig();
@@ -313,7 +312,7 @@ export class Repo {
         });
 
         var json = JSON.stringify(config);
-        nfs.writeFileSync(path.join(this.jerkPath, 'config'), json, { mode: 0o644 });
+        fse.outputFileSync(path.join(this.jerkPath, 'config'), json);
         this.writeHEADCommitData();
     }
 

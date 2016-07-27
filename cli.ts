@@ -34,7 +34,7 @@ module CLI {
         let s = stdout.toString().trim().split('\r').pop();
         if (rsyncPercentage.test(s)) {
             let perc = parseInt(rsyncPercentage.exec(s)[1]);
-            bar.tick(perc);
+            return bar.tick(perc);
         }
         return bar.curr;
     }
@@ -162,7 +162,6 @@ module CLI {
 
                         cp.on('exit', () => {
                             bar.tick(100);
-                            bar.terminate();
                             cloneOnObjectsFetched();
                         });
                     });
@@ -548,7 +547,6 @@ module CLI {
 
             cp.on('exit', (code: number, signal: string) => {
                 bar.tick(100);
-                bar.terminate();
                 log.success('pull finished successfully');
             });
         });
@@ -652,7 +650,6 @@ module CLI {
             });
         cp.on('exit', (code: number, signal: string) => {
             bar.tick(100);
-            bar.terminate();
             if (code === 0) return callback(true);
             return callback(false);
         });
