@@ -128,6 +128,9 @@ module CLI {
 
     export function clone(url: string, options: any) {
         if (!!options.quiet) log.silence();
+        if (fs.existsSync('.jerk')) {
+            return log.error('You can not clone inside existing repository');
+        }
 
         let remote = parseRemoteAddress(url);
         let req = http.get(
@@ -137,6 +140,9 @@ module CLI {
                 path: '/config'
             },
             (res) => {
+                let cfg = path.join('.jerk', 'config');
+                fse.ensureFileSync(cfg);
+
                 let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
                 let cp = child_process.execFile("rsync",
                     [`rsync://${remote.host}:${remote.port}/jerk/objects`, '--info=progress2',
@@ -146,9 +152,6 @@ module CLI {
                         if (!!stdout) rsyncOutputProgressUpdate(stdout, bar);
                         if (!!stderr) log.log(stderr);
                     });
-
-                let cfg = path.join('.jerk', 'config');
-                fse.ensureFileSync(cfg);
                 res
                     .on('data', (chunk: Uint8Array) => {
                         let buf = new Buffer(chunk);
