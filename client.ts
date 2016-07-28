@@ -68,7 +68,7 @@ module Client {
     }
 
     export function status(repo: Common.Repo): WorkingTreeStatus {
-        var commit = repo.lastCommit;
+        var commit = repo.head.commit;
         var ignore = ['.jerk', '.jerk/**/*'];
         var all = glob.sync('**/*',
             { dot: true, nodir: true, ignore: '{' + ignore.join() + '}' });
@@ -112,7 +112,7 @@ module Client {
         return result;
     };
 
-    export function checkoutFile(repo: Common.Repo, commit: Common.Commit = repo.lastCommit, path: string) {
+    export function checkoutFile(repo: Common.Repo, commit: Common.Commit = repo.head.commit, path: string) {
         if (!commit) {
             fs.unlinkSync(path);
             repo.unstage(path);
@@ -128,7 +128,7 @@ module Client {
         }
     }
 
-    export function checkoutFileExtended(repo: Common.Repo, commit: Common.Commit = repo.lastCommit, tf: Common.TreeFile) {
+    export function checkoutFileExtended(repo: Common.Repo, commit: Common.Commit = repo.head.commit, tf: Common.TreeFile) {
         let fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
 
         var stat: fs.Stats;
@@ -148,7 +148,7 @@ module Client {
     }
 
     export function revertAllWorkingTreeChanges(repo: Common.Repo) {
-        var commit = repo.lastCommit;
+        var commit = repo.head.commit;
         var res = status(repo);
         if (!res.anyChanges) {
             return;
@@ -193,12 +193,12 @@ module Client {
     }
 
     export function checkout(repo: Common.Repo, commit: Common.Commit, branch?: Common.Branch) {
+        let head = repo.head;
+        head.move(commit.id);
         if (!!branch) {
             repo.currentBranchName = branch.name;
-            repo.detachedHEADID = null;
         } else {
             repo.currentBranchName = null;
-            repo.detachedHEADID = commit.id;
         }
 
         revertAllWorkingTreeChanges(repo);
@@ -219,8 +219,8 @@ module Client {
         soft: boolean = false, mixed: boolean = true, hard: boolean = false, merge: boolean = false,
         targetCommit: Common.Commit
     ) {
-        if (targetCommit.id != repo.lastCommitID) {
-            let oldHEADCommit = repo.lastCommit;
+        if (targetCommit.id != repo.head.head) {
+            let oldHEADCommit = repo.head.commit;
 
             repo.writeORIGHEADCommitData(oldHEADCommit);
             repo.currentBranch.move(targetCommit.id);

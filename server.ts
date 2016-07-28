@@ -104,7 +104,7 @@ module Server {
 
             this._defaultBranchName = config.defaultBranchName;
 
-            this._refs = Common.loadRefsFromObject(config.refs);
+            this._refs = Common.loadRefsFromObject(config.refs, this);
             this._commits = Common.loadCommitsFromObject(config.commits, this);
 
             this._revision = config.revision;
@@ -227,7 +227,7 @@ module Server {
             }
         }
         if (!!data.refs) {
-            repo.applyRefs(Common.loadRefsFromObject(data.refs));
+            repo.applyRefs(Common.loadRefsFromObject(data.refs, null));
         }
         repo.revision++;
         log.success('push successful');

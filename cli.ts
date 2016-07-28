@@ -10,7 +10,7 @@ import * as Common from './common';
 import * as Format from './format';
 import * as Client from './client';
 import * as Logger from './log';
-import program = require('commander');
+let program = require('commander');
 import * as glob from 'glob';
 import * as Moment from 'moment';
 import Configstore = require('configstore');
@@ -27,7 +27,7 @@ let resetCommitGivenHint = "You have specified commit to reset given index entri
 let quietDescription = 'Be quiet, only print warnings and errors, any other output will be suppressed.';
 
 module CLI {
-    let log = new Logger.Logger();
+    export let log = new Logger.Logger();
 
     let rsyncPercentage = /\s+(\d+)%/;
     function rsyncOutputProgressUpdate(stdout: any, bar: any) {
@@ -106,7 +106,6 @@ module CLI {
         let nconfig = {
             defaultBranchName: config.defaultBranchName,
             currentBranchName: config.defaultBranchName,
-            detachedHEAD: null,
             refs: config.refs,
             commits: config.commits,
             staged: []
@@ -123,7 +122,7 @@ module CLI {
     function cloneOnObjectsFetched() {
         log.info('objects fetched successfully!');
         let repo = new Common.Repo(process.cwd());
-        let commit = repo.lastCommit;
+        let commit = repo.head.commit;
         if (!!commit) Client.checkout(repo, commit, repo.currentBranch);
         log.success('repository cloned successfully!');
     }
@@ -184,7 +183,7 @@ module CLI {
         if (res.anyStagedChanges) mod += ', staged';
         var curCommit = repo.currentBranchName;
         if (!curCommit) {
-            curCommit = 'HEAD #' + repo.detachedHEADID.substring(0, 7);
+            curCommit = 'HEAD #' + repo.head.head.substring(0, 7);
         }
 
         log.info(colors.blue(repo.name), '>', colors.yellow(curCommit), '>', colors.bold(mod));
@@ -249,7 +248,7 @@ module CLI {
             return;
         }
 
-        if (!!repo.detachedHEADID) {
+        if (!repo.currentBranchName) {
             log.error('you can not commit in detached HEAD state. Create new branch.');
             return;
         }
@@ -285,7 +284,7 @@ module CLI {
             }
         }
 
-        var commit = repo.lastCommit;
+        var commit = repo.head.commit;
         var newCommit = repo.createCommit(commit, message, authorName, authorEMail, amend, oldCommitData);
         log.success(Format.formatCommitMessage(newCommit, '%Cyellow%h%Creset: %s'));
     }
@@ -340,7 +339,7 @@ module CLI {
         var repo = cwdRepo();
         log.header('Commit Log');
 
-        var commit = repo.lastCommit;
+        var commit = repo.head.commit;
         var graph = !!options.graph;
         if (options.format === true) {
             log.error('unknown log format');
@@ -401,7 +400,7 @@ module CLI {
         }
 
         try {
-            var branch = repo.createBranch(name, repo.lastCommitID);
+            var branch = repo.createBranch(name, repo.head.head);
 
             log.success(`Branch "${branch.name}" created successfully!`);
         } catch (e) {
@@ -414,9 +413,12 @@ module CLI {
         var repo = cwdRepo();
 
         var commit = repo.commit(what);
-        var branch = repo.ref<Common.Branch>(what);
-        if (!commit && !!branch) {
-            commit = repo.commit(branch.head);
+        var ref = repo.ref<Common.Ref>(what);
+        if (!commit && !ref) {
+            ref = repo.createRef(what, true);
+        }
+        if (!commit && !!ref) {
+            commit = ref.commit;
         }
         if (!commit) {
             log.error('Commit or branch to checkout not found!');
@@ -425,9 +427,9 @@ module CLI {
 
         if (options.force) Client.revertAllWorkingTreeChanges(repo);
 
-        Client.checkout(repo, commit, branch);
+        Client.checkout(repo, commit, (ref instanceof Common.Branch) ? ref : null);
 
-        if (!branch) {
+        if (!repo.currentBranchName) {
             log.info("Detached HEAD");
             log.log("You have entered 'detached HEAD' state. You can look around, make experimental changes" +
                 " and create new branch based on this commit to retain all changes you would like to make." +
@@ -487,7 +489,7 @@ module CLI {
         }
 
         let givenCommit = paths.length > 0 ? repo.commit(paths[0]) : null;
-        var targetCommit = givenCommit || repo.lastCommit;
+        var targetCommit = givenCommit || repo.head.commit;
         if (!targetCommit) {
             log.error('no target commit found, working in an empty repository?');
             return;
@@ -543,7 +545,7 @@ module CLI {
                     ref.head = val[2];
                     ref.time = parseInt(val[3]);
                 } else {
-                    repo.addRef(new Common.Ref(val[2], val[1], parseInt(val[3])));
+                    repo.addRef(new Common.Ref(val[2], val[1], repo, parseInt(val[3])));
                 }
             });
 
@@ -566,6 +568,7 @@ module CLI {
         let commits = [];
         Common.iterateStringKeyObject<string[]>(cfg.refs).forEach(v => {
             if (!fastForwardable) return;
+            if (v.key === 'HEAD') return;
             let ref = repo.ref(v.key);
             let val = v.value;
             if (!ref) {
@@ -709,7 +712,7 @@ module CLI {
                 .filter(x => !!x)
                 .map(x => x.data());
             let newRefs = repo.refs()
-                .map(x => (data.remoteRefs.indexOf(x.name) < 0) ? x : null)
+                .map(x => (data.remoteRefs.indexOf(x.name) < 0 && x.name !== 'HEAD') ? x : null)
                 .filter(x => !!x)
                 .map(x => x.data());
             let changedRefs = data.changedRefs
@@ -848,7 +851,11 @@ program
     .description('Upload local object and ref changes to remote repository')
     .action(CLI.push);
 
-program.parse(process.argv);
+try {
+    program.parse(process.argv);
+} catch (e) {
+    CLI.log.error('Error:', e);
+}
 if (!process.argv.slice(2).length) {
     program.outputHelp();
 }

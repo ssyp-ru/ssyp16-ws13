@@ -104,9 +104,13 @@ export class Ref extends Serializable {
      * @param head HEAD Commit ID (last commit in this ref)
      * @param time UNIX timestamp of the time the ref was created
      */
-    constructor(public head: string, public name: string, public time: number = new Date().getTime()) {
+    constructor(public head: string, public name: string, private repo: Repo, public time: number = new Date().getTime()) {
         super();
         this._callbacks = [];
+    }
+
+    get commit(): Commit {
+        return !!this.head ? this.repo.commit(this.head) : null;
     }
 
     /**
@@ -257,7 +261,6 @@ export class StringMap<T> {
 export class Repo {
     protected _defaultBranchName: string;
     private _currentBranchName: string;
-    private _detachedHEAD: string;
     protected _refs: StringMap<Ref>;
     protected _commits: StringMap<Commit>;
     private _staged: string[];
@@ -272,7 +275,6 @@ export class Repo {
     constructor(public root: string, init: boolean = false) {
         this._defaultBranchName = 'master';
         this._currentBranchName = 'master';
-        this._detachedHEAD = null;
         this._refs = new StringMap<Ref>();
         this._commits = new StringMap<Commit>();
         this._staged = [];
@@ -290,6 +292,7 @@ export class Repo {
 
             fse.ensureDirSync(this.jerkPath);
 
+            this.createRef('HEAD');
             this.createBranch('master', null);
             this.saveConfig();
 
@@ -303,7 +306,6 @@ export class Repo {
         var config = {
             defaultBranchName: this._defaultBranchName,
             currentBranchName: this._currentBranchName,
-            detachedHEAD: this._detachedHEAD,
             refs: {},
             commits: {},
             staged: this._staged
@@ -328,7 +330,6 @@ export class Repo {
         var config: {
             defaultBranchName: string,
             currentBranchName: string,
-            detachedHEAD: string,
             refs: Object,
             commits: Object,
             staged: string[]
@@ -336,9 +337,8 @@ export class Repo {
 
         this._defaultBranchName = config.defaultBranchName;
         this._currentBranchName = config.currentBranchName;
-        this._detachedHEAD = config.detachedHEAD;
 
-        this._refs = loadRefsFromObject(config.refs);
+        this._refs = loadRefsFromObject(config.refs, this);
         this._commits = loadCommitsFromObject(config.commits, this);
 
         this._staged = config.staged;
@@ -404,34 +404,6 @@ export class Repo {
         if (!name) return null;
 
         return this.ref<Branch>(name);
-    }
-
-    /**
-     * Detached HEAD commit id or null
-     */
-    get detachedHEADID(): string { return this._detachedHEAD; }
-
-    set detachedHEADID(id: string) {
-        if (!id) {
-            this._detachedHEAD = null;
-            this.saveConfig();
-            return;
-        }
-
-        var commit = this.commit(id);
-        if (!commit) throw "Commit not found";
-
-        this._detachedHEAD = id;
-        this.saveConfig();
-    }
-
-    /**
-     * Detached HEAD commit or null
-     */
-    get detachedHEAD(): Commit {
-        if (!this._detachedHEAD) return null;
-
-        return this.commit(this._detachedHEAD);
     }
 
     /**
@@ -577,6 +549,8 @@ export class Repo {
         if (!!this._currentBranchName)
             this.currentBranch.move(hash);
 
+        this.head.move(hash);
+
         this.saveConfig();
         return commit;
     }
@@ -584,12 +558,38 @@ export class Repo {
     /**
      * Create new Ref from string
      */
-    createRef(ref: string): Ref {
-        if (!Ref.validRefName(ref)) throw "Invalid ref name";
+    createRef(refName: string, temp: boolean = false): Ref {
+        if (!Ref.validRefName(refName)) throw "Invalid ref name";
+        if (!!this._refs.get(refName)) throw "Ref with this name already exists!";
 
-        var complex: boolean = ref.includes('~');
-        this.saveConfig();
-        throw "Not Implemented";
+        var complex: boolean = refName.includes('~');
+
+        var head: string = null;
+        if (refName !== 'HEAD') {
+            head = this.head.head;
+            if (complex) {
+                let parts = refName.split('~');
+                var base: Commit = this.commit(parts[0])
+                    || (this.ref(parts[0]) || { commit: null }).commit;
+                if (!base) throw "Relative Ref base commit not found";
+                var fallback = !!parts[1].length ? parseInt(parts[1]) : 1;
+                if (isNaN(fallback)) throw "Relative offset is not a number";
+                if (fallback < 0) throw "Relative offset must be positive";
+                for (; fallback > 0; fallback--) {
+                    base = base.parent;
+                    if (!base) throw "Fallen back too far, no commit found";
+                }
+                head = base.id;
+            }
+        }
+
+        let ref = new Ref(head, refName, this);
+
+        if (!temp) {
+            this._refs.put(refName, ref);
+            this.saveConfig();
+        }
+        return ref;
     }
 
     /**
@@ -600,12 +600,14 @@ export class Repo {
         if (branchName.includes('~')) {
             throw "Invalid branch name";
         }
+        if (!!this._refs.get(branchName)) throw "Ref with this name already exists!";
 
         if (commit === undefined) {
-            var commitID = this.lastCommitID;
+            let head = this.head;
+            if (!!head) commit = this.head.head;
         }
 
-        var branch = new Branch(commit, branchName);
+        var branch = new Branch(commit, branchName, this);
         this._refs.put(branchName, branch);
         this.saveConfig();
         return branch;
@@ -619,8 +621,13 @@ export class Repo {
         if (tagName.includes('~')) {
             throw "Invalid tag name";
         }
+        if (!!this._refs.get(tagName)) throw "Ref with this name already exists!";
 
-        var tag = new Tag(this.lastCommitID, tagName);
+        if (!this.head) {
+            throw "Tag requires HEAD to be present";
+        }
+
+        var tag = new Tag(this.head.head, tagName, this);
         this._refs.put(tagName, tag);
         this.saveConfig();
         return tag;
@@ -637,18 +644,12 @@ export class Repo {
         return this._fs;
     }
 
-    get lastCommitID(): string {
-        return !!this.currentBranchName ? this.currentBranch.head : this.detachedHEADID;
-    }
-
-    get lastCommit(): Commit {
-        var lcID = this.lastCommitID;
-        if (!lcID) return null;
-        return this.commit(lcID);
+    get head(): Ref {
+        return this.ref<Ref>('HEAD');
     }
 
     writeHEADCommitData() {
-        var commit = this.lastCommit;
+        var commit = this.head.commit;
         if (!commit) return;
 
         var json = JSON.stringify(commit.data());
@@ -690,18 +691,18 @@ export function cwdRepo(): Repo {
     return null;
 }
 
-export function loadRefsFromObject(o: Object): StringMap<Ref> {
+export function loadRefsFromObject(o: Object, repo: Repo): StringMap<Ref> {
     let res = new StringMap<Ref>();
     iterateStringKeyObject<string[]>(o).forEach(v => {
         var key: string = v.key;
         var data: string[] = v.value;
         var type = data[0];
         if (type === "Ref") {
-            res.put(key, new Ref(data[2], data[1], parseInt(data[3])));
+            res.put(key, new Ref(data[2], data[1], repo, parseInt(data[3])));
         } else if (type === "Branch") {
-            res.put(key, new Branch(data[2], data[1], parseInt(data[3])));
+            res.put(key, new Branch(data[2], data[1], repo, parseInt(data[3])));
         } else if (type === "Tag") {
-            res.put(key, new Tag(data[2], data[1], parseInt(data[3])));
+            res.put(key, new Tag(data[2], data[1], repo, parseInt(data[3])));
         }
     });
     return res;
