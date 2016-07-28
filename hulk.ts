@@ -31,7 +31,7 @@ export class LcsProvider {
         }
     }
 
-    constructor (public first: string[], public second: string[]) {}
+    constructor(public first: string[], public second: string[]) { }
 }
 
 export enum HunkOperation { Add, Remove };
@@ -42,7 +42,7 @@ interface CommonElement {
     secondIndex: number;
 }
 
-class Hunk {
+export class Hunk {
     line: number;
     value: string;
     type: HunkOperation;
@@ -58,11 +58,31 @@ class Hunk {
 export class Diff {
     apply(buff: Buffer) {
         if (this._hunks.length == 0) return buff;
-        var strToReturn = "";
+
+        var bufftext = buff.toString('utf8');
+        var lines = bufftext.split('\n');
+        var newlines: string[] = [];
+        for (var i = 0, j = 0, currHunk = this._hunks[j]; i < lines.length; i++) {
+            if (i < currHunk.line) newlines.push(lines[i]);
+            else {
+                switch (currHunk.type) {
+                    case HunkOperation.Add:
+                        newlines.push(currHunk.value);
+                        newlines.push(lines[i]);
+                        break;
+                    case HunkOperation.Remove:
+                        break;
+                }
+                currHunk = this._hunks[++j];
+            }
+        }
+        return new Buffer(newlines.join('\n'));
+        
+        /*var strToReturn = "";
         var bufInStr = buff.toString("utf8");
         var posInString = 0;
         var posOfLine = -1;
-        var curLine = 1;
+        var curLine = 0;
         for (var i = 0; i < this._hunks.length; i++) {
             while (curLine < this._hunks[i].line) {
                 posOfLine++;
@@ -84,14 +104,19 @@ export class Diff {
         for (i = posInString; i < bufInStr.length; i++) {
             strToReturn += bufInStr[i];
         }
-        return new Buffer(strToReturn, "utf8");
+        return new Buffer(strToReturn, "utf8");*/
     }
 
     private _hunks: Hunk[];
 
     get hunks(): Hunk[] { return [].concat(this._hunks) }
 
-    constructor(hunks: Hunk[]) { this._hunks = hunks.sort((a, b) => a.line - b.line); }
+    conflicted: boolean = false;
+
+    constructor(hunks: Hunk[], conflicted?: boolean) { 
+        this._hunks = hunks.sort((a, b) => a.line - b.line);
+        if (conflicted) this.conflicted = true; 
+    }
 
     static diff(leftBuffer: Buffer, rightBuffer: Buffer): Diff {
         var leftBufferStr = leftBuffer.toString().split("\n");
@@ -105,44 +130,45 @@ export class Diff {
         var fp = 0,
             sp = 0;
         while (i < commonElements.length) {
-             while (fp < commonElements[i].firstIndex) { hunks.push(new Hunk(fp, leftBufferStr[fp++], HunkOperation.Remove)); }
-             while (sp < commonElements[i].secondIndex) { hunks.push(new Hunk(fp, rightBufferStr[sp++], HunkOperation.Add)); }
-             i++;
-             fp += 1;
-             sp += 1;
+            while (fp < commonElements[i].firstIndex) { hunks.push(new Hunk(fp, leftBufferStr[fp++], HunkOperation.Remove)); }
+            while (sp < commonElements[i].secondIndex) { hunks.push(new Hunk(fp, rightBufferStr[sp++], HunkOperation.Add)); }
+            i++;
+            fp += 1;
+            sp += 1;
         }
         if (hunks.length == 0) { return null; }
         return new Diff(hunks);
     }
 }
 
-export class MergeConflict {
-    constructor(public left: Hunk, public right: Hunk) { }
-}
 
-export function merge(left: Diff, right: Diff): Diff | MergeConflict[] {
+export function merge(left: Diff, right: Diff): Diff {
     var lhunks = left.hunks, rhunks = right.hunks;
     var i = 0, j = 0;
     var hunks: Hunk[] = [];
-    var conflicts: MergeConflict[] = [];
+    var conflicted = false;
     if (!lhunks) {
         return new Diff(rhunks);
     }
     while (lhunks[i] && rhunks[j]) {
-        if ((lhunks[i].line < rhunks[j].line) || (lhunks[i].value == rhunks[j].value && lhunks[i].line == rhunks[j].line)) {
-            hunks.push(lhunks[i++]);
-            if (lhunks[i - 1].value == rhunks[j].value && lhunks[i - 1].line == rhunks[j].line) j++;
+        let eq = lhunks[i].value == rhunks[j].value && lhunks[i].line == rhunks[j].line;
+        if ((lhunks[i].line < rhunks[j].line) || eq) {
+            hunks.push(lhunks[i]);
+            if (eq) j++;
+            i++;
         } else if (lhunks[i].line > rhunks[j].line) {
             hunks.push(rhunks[j++]);
         } else {
-            conflicts.push(new MergeConflict(lhunks[i++], rhunks[j++]));
+            var line = lhunks[i].line;
+            hunks.push(new Hunk(line, '<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<', HunkOperation.Add));
+            hunks.push(lhunks[i++]);
+            hunks.push(new Hunk(line, '>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>', HunkOperation.Add));
+            hunks.push(rhunks[j++]);
+            hunks.push(new Hunk(line, '====================================', HunkOperation.Add));
+            conflicted = true;
         }
     }
-    if (conflicts.length > 0) return conflicts;
-    i = 0;
-    j = 0;
     while (lhunks[i]) hunks.push(lhunks[i++]);
     while (rhunks[j]) hunks.push(rhunks[j++]);
-    return new Diff(hunks);
-
+    return new Diff(hunks, conflicted);
 }

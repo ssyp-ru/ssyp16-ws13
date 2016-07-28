@@ -499,7 +499,7 @@ module CLI {
             }
         }
 
-        let givenCommit = paths.length > 0 ? repo.commit(paths[0]) : null;
+        let givenCommit = paths.length > 0 ? resolveWhat(repo, paths[0]).commit : null;
         var targetCommit = givenCommit || repo.head.commit;
         if (!targetCommit) {
             log.error('no target commit found, working in an empty repository?');

@@ -242,9 +242,12 @@ module Client {
         soft: boolean = false, mixed: boolean = true, hard: boolean = false, merge: boolean = false,
         targetCommit: Common.Commit
     ) {
+        // log.info(targetCommit.id);
         if (targetCommit.id != repo.head.head) {
+            // log.info(repo.head.head);
             repo.writeCommitData(repo.head, 'ORIG_HEAD');
             repo.currentBranch.move(targetCommit.id);
+            repo.head.move(targetCommit.id);
             repo.saveConfig();
         }
 
@@ -392,33 +395,23 @@ module Client {
         if (!generateBranchDiffs(repo, root.bBranch, bDiffs, bBlobs)) throw "Failed to calculate merging branch diff";
         // log.info(JSON.stringify(bDiffs.data), JSON.stringify(bBlobs.data));
 
-        let failures = new Common.StringMap<string>();
-
+        var conflicted = false;
         bDiffs.iter().forEach(v => {
             let aDiff = aDiffs.get(v.key);
             if (!aDiff) return aDiffs.put(v.key, v.value);
             let merged = Hulk.merge(aDiff, v.value);
-            if (!(merged instanceof Hulk.Diff)) {
-                log.error(`Merge[${v.key}] failed!`);
-                let conflict = merged as Hulk.MergeConflict[];
-                var s = "Merge Failure\n\n";
-                conflict.forEach(v => {
-                    s += `>>>>>>>>>>> LEFT\nLine: ${v.left.line}\n${v.left.type === Hulk.HunkOperation.Add ? '+' : '-'}: ${v.left.value}\n`;
-                    s += `===========\nLine: ${v.right.line}\n${v.right.type === Hulk.HunkOperation.Add ? '+' : '-'}: ${v.right.value}\n`;
-                    s += '<<<<<<<<<<< RIGHT\n\n';
-                });
-                failures.put(v.key, s);
-                return;
+            if (merged.conflicted) {
+                log.error(`Merge conflicts found in file [${v.key}]`);
+                conflicted = true;
             }
-            aDiffs.put(v.key, merged as Hulk.Diff);
+            aDiffs.put(v.key, merged);
         });
         bBlobs.iter().forEach(v => {
             let aBlob = aBlobs.get(v.key);
             if (!aBlob) return aBlobs.put(v.key, v.value);
             if (v.value.hash != aBlob.hash) {
                 log.info(`Blob[${v.key}] merge failed!`);
-                let s = `Blob Merge Failure\n>>>>>>>>>>> LEFT\n${aBlob.hash}\n===========\n${v.value.hash}\n<<<<<<<<<<<  RIGHT\n\n`;
-                failures.put(v.key, s)
+                conflicted = true;
                 return aBlobs.put(v.key, v.value);
             }
         });
@@ -451,9 +444,7 @@ module Client {
 
         repo.setMerging(head.id, repo.currentBranchName);
 
-        failures.iter().forEach(v => fse.outputFileSync('MERGE_' + v.key + '.txt', v.value));
-
-        if (failures.iter().length > 0) {
+        if (conflicted) {
             return null;
         }
 

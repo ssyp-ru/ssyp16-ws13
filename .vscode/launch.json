@@ -46,6 +46,27 @@
             "outDir": null
         },
         {
+            "name": "Mocha",
+            "type": "node",
+            "request": "launch",
+            "program": "/usr/bin/mocha",
+            "stopOnEntry": false,
+            "args": [
+            ],
+            "cwd": "/home/ssyp/ws13",
+            "preLaunchTask": "tsc",
+            "runtimeExecutable": null,
+            "runtimeArgs": [
+                "--nolazy"
+            ],
+            "env": {
+                "NODE_ENV": "development"
+            },
+            "externalConsole": false,
+            "sourceMaps": true,
+            "outDir": null
+        },
+        {
             "name": "Attach",
             "type": "node",
             "request": "attach",
