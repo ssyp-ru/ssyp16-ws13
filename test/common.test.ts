@@ -58,13 +58,15 @@ describe("Common", function () {
         });
     });
     describe("commit functions", function () {
-        describe("after staging", () => {
-            before(() => {
-                init_commit = test_repo.createCommit(null, "test message init",
-                    "test author init", "test_init@test.com");
-            });
+        describe("init commit", () => {
             it("tests creation of new commit", function () {
-                assert.notEqual(init_commit, null, "init_commit has not created");
+                doesNotThrow(() =>
+                    init_commit = test_repo.createCommit(null, "test message init",
+                        "test author init", "test_init@test.com"));
+                assert.notEqual(init_commit, null, "init_commit was not created");
+            });
+            it('checks HEAD ref pointer', () => {
+                assert.equal(test_repo.head.head, init_commit.id, 'wrong HEAD commit id');
             });
             it("check commit's message", function () {
                 assert.equal(init_commit.message, "test message init",
@@ -75,10 +77,14 @@ describe("Common", function () {
                     "test author inittest_init@test.com");
             });
         });
-        describe("after second commit", () => {
-            before(() => {
+        describe("second commit", () => {
+            it('creates second commit', () => doesNotThrow(() => {
                 second_commit = test_repo.createCommit(init_commit, "test message",
                     "test author", "test@test.com");
+                assert.notEqual(second_commit, null, "second_commit was not created");
+            }));
+            it('checks HEAD ref pointer', () => {
+                assert.equal(test_repo.head.head, second_commit.id, 'wrong HEAD commit id');
             });
             it("check parent", function () {
                 assert.equal(second_commit.parent, init_commit);
@@ -131,4 +137,8 @@ describe("Common", function () {
             assert.equal(ref.head, second_commit.id, "wrong head");
         });
     });
+    after(() => {
+        process.chdir(path.join(process.cwd(), '..'));
+        fse.deleteSync('mocha-tests');
+    })
 });
