@@ -62,10 +62,8 @@ export class Diff {
         var bufInStr = buff.toString("utf8");
         var posInString = 0;
         var posOfLine = -1;
-        var curLine = 0;
-        var j;
-        var i;
-        for (i = 0; i < this._hunks.length; i++) {
+        var curLine = 1;
+        for (var i = 0; i < this._hunks.length; i++) {
             while (curLine < this._hunks[i].line) {
                 posOfLine++;
                 if (bufInStr[posOfLine + 1] == "\n") {
@@ -73,10 +71,10 @@ export class Diff {
                     posOfLine += 2;
                 }
             }
-            for (j = posInString; j < posOfLine; j++) {
+            for (var j = posInString; j < posOfLine; j++) {
                 strToReturn += bufInStr[j];
             }
-            if (this._hunks[i].type = HunkOperation.Add) {
+            if (this._hunks[i].type == HunkOperation.Add) {
                 strToReturn += this._hunks[i].value + "\n";
             } else {
                 posInString += this._hunks[i].value.length + 2;
@@ -124,14 +122,16 @@ export class MergeConflict {
 
 export function merge(left: Diff, right: Diff): Diff | MergeConflict[] {
     var lhunks = left.hunks, rhunks = right.hunks;
-
     var i = 0, j = 0;
-
     var hunks: Hunk[] = [];
     var conflicts: MergeConflict[] = [];
+    if (!lhunks) {
+        return new Diff(rhunks);
+    }
     while (lhunks[i] && rhunks[j]) {
-        if (lhunks[i].line < rhunks[j].line) {
+        if ((lhunks[i].line < rhunks[j].line) || (lhunks[i].value == rhunks[j].value && lhunks[i].line == rhunks[j].line)) {
             hunks.push(lhunks[i++]);
+            if (lhunks[i - 1].value == rhunks[j].value && lhunks[i - 1].line == rhunks[j].line) j++;
         } else if (lhunks[i].line > rhunks[j].line) {
             hunks.push(rhunks[j++]);
         } else {
@@ -143,6 +143,6 @@ export function merge(left: Diff, right: Diff): Diff | MergeConflict[] {
     j = 0;
     while (lhunks[i]) hunks.push(lhunks[i++]);
     while (rhunks[j]) hunks.push(rhunks[j++]);
-
     return new Diff(hunks);
+
 }

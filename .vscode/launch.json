@@ -8,8 +8,9 @@
             "program": "${workspaceRoot}/cli.js",
             "stopOnEntry": false,
             "args": [
-                "checkout",
-                "master"
+                "merge",
+                "dev",
+                "* master <= dev"
             ],
             "cwd": "/home/ssyp/jerk-test",
             "preLaunchTask": "tsc",

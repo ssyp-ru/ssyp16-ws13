@@ -27,6 +27,24 @@ export class TreeFile {
     }
 }
 
+export class MergeOf extends Serializable {
+    constructor(private _commit: string, private _repo: Repo, private _branch?: string) {
+        super();
+    }
+    data(): string[] {
+        return ['MergeOf', this._commit, this._branch];
+    }
+    get branch(): Branch {
+        return this._repo.ref<Branch>(this._branch);
+    }
+    get commit(): Commit {
+        return this._repo.commit(this._commit);
+    }
+    get repo(): Repo {
+        return this._repo;
+    }
+}
+
 /**
  * Commit class representation
  */
@@ -42,7 +60,7 @@ export class Commit extends Serializable {
         public authorEMail: string = null,
         public time: number = new Date().getTime(),
         private _contents: StringMap<TreeFile> = new StringMap<TreeFile>(),
-        private _mergeOf: string = null, public changed: string[] = []) {
+        private _mergeOf: MergeOf = null, public changed: string[] = []) {
         super();
     }
 
@@ -73,14 +91,13 @@ export class Commit extends Serializable {
     file(path: string): TreeFile { return this._contents.get(path); }
 
     /** 
-     * Branch merged, or null if none merged by this commit
+     * MergeOf, or null if nothing merged by this commit
      */
-    get mergeOf(): Branch {
-        if (!this._mergeOf) return null;
-        return this.repo.ref<Branch>(this._mergeOf);
+    get mergeOf(): MergeOf {
+        return this._mergeOf;
     }
 
-    set mergeOf(branch: Branch) { this._mergeOf = branch.name; }
+    set mergeOf(mergeOf: MergeOf) { this._mergeOf = mergeOf; }
 
     /**
      * @see Serializable
@@ -88,7 +105,7 @@ export class Commit extends Serializable {
     data(): string[] {
         return ["Commit", this.id, this.message, this.authorName, this.authorEMail,
             this.parentId, this.time.toString(), JSON.stringify(this._contents),
-            this._mergeOf, JSON.stringify(this.changed)];
+            JSON.stringify(this._mergeOf), JSON.stringify(this.changed)];
     }
 }
 
@@ -104,7 +121,7 @@ export class Ref extends Serializable {
      * @param head HEAD Commit ID (last commit in this ref)
      * @param time UNIX timestamp of the time the ref was created
      */
-    constructor(public head: string, public name: string, private repo: Repo, public time: number = new Date().getTime()) {
+    constructor(public head: string, public name: string, private _repo: Repo, public time: number = new Date().getTime()) {
         super();
         this._callbacks = [];
     }
@@ -152,6 +169,10 @@ export class Ref extends Serializable {
      */
     data(): string[] {
         return ["Ref", this.name, this.head, this.time.toString()];
+    }
+
+    get repo(): Repo {
+        return this._repo;
     }
 }
 
@@ -255,16 +276,23 @@ export class StringMap<T> {
         return JSON.stringify(this.data);
     }
 }
+
+function onHEADMoved(event: string, args: string[]) {
+    let $this: Ref = this;
+    $this.repo.writeCommitData($this, 'HEAD');
+}
+
 /**
  * Repository class representation
  */
 export class Repo {
     protected _defaultBranchName: string;
-    private _currentBranchName: string;
+    protected _currentBranchName: string;
     protected _refs: StringMap<Ref>;
     protected _commits: StringMap<Commit>;
-    private _staged: string[];
+    protected _staged: string[];
     protected _fs: fs.IFileSystem;
+    protected _merging: MergeOf;
 
     /**
      * Constructor that allows Repo creation if needed
@@ -278,6 +306,7 @@ export class Repo {
         this._refs = new StringMap<Ref>();
         this._commits = new StringMap<Commit>();
         this._staged = [];
+        this._merging = null;
 
         if (!this.local) return;
 
@@ -308,7 +337,8 @@ export class Repo {
             currentBranchName: this._currentBranchName,
             refs: {},
             commits: {},
-            staged: this._staged
+            staged: this._staged,
+            merging: !!this._merging ? this._merging.data() : null
         };
 
         this._refs.iter().forEach(v => {
@@ -321,7 +351,7 @@ export class Repo {
 
         var json = JSON.stringify(config);
         fse.outputFileSync(path.join(this.jerkPath, 'config'), json);
-        this.writeHEADCommitData();
+        this.writeCommitData(this.head, 'HEAD');
     }
 
     protected _loadConfig() {
@@ -332,7 +362,8 @@ export class Repo {
             currentBranchName: string,
             refs: Object,
             commits: Object,
-            staged: string[]
+            staged: string[],
+            merging: string[]
         } = JSON.parse(json);
 
         this._defaultBranchName = config.defaultBranchName;
@@ -342,6 +373,10 @@ export class Repo {
         this._commits = loadCommitsFromObject(config.commits, this);
 
         this._staged = config.staged;
+        this._merging = null;
+        if (!!config.merging) {
+            this._merging = new MergeOf(config.merging[1], this, config.merging[2]);
+        }
     }
 
     get jerkPath(): string { return path.join(this.root, '.jerk'); }
@@ -427,7 +462,9 @@ export class Repo {
     /**
      * Get all commits in this repo.
      */
-    commits(): Commit[] { return this._commits.iterValues(); }
+    get commits(): Commit[] { return this._commits.iterValues(); }
+
+    get commitsDB(): StringMap<Commit> { return this._commits; }
 
     /**
      * Find Ref by its name
@@ -479,10 +516,9 @@ export class Repo {
      * @param amend amend previous commit instead of creating absolutely different one
      * @param oldCommitData previous commit to base on
      */
-    createCommit(previous: Commit, message: string = null,
+    createCommit(previous: Commit, message: string,
         authorName: string = null, authorEMail: string = null,
-        amend: boolean = false, oldCommitData: string[] = null,
-        mergeOf: string = null): Commit {
+        amend: boolean = false, oldCommitData: string[] = null): Commit {
         var ts: number = new Date().getTime();
         var hash: string = createHash('sha256').update(message || ts, 'utf8').digest('hex');
         var contents = new StringMap<TreeFile>();
@@ -541,8 +577,12 @@ export class Repo {
             oldStaged.forEach(v => this.stage(v));
         }
 
+        if (!!this.merging) {
+            this.setMerging(null, null);
+        }
+
         var commit = new Commit(hash, this, !!previous ? previous.id : null,
-            message, authorName, authorEMail, ts, contents, mergeOf, this.staged);
+            message, authorName, authorEMail, ts, contents, this._merging, this.staged);
         this._commits.put(hash, commit);
         this._staged = [];
 
@@ -587,6 +627,9 @@ export class Repo {
 
         if (!temp) {
             this._refs.put(refName, ref);
+            if (refName === 'HEAD') {
+                ref.on(onHEADMoved);
+            }
             this.saveConfig();
         }
         return ref;
@@ -648,19 +691,23 @@ export class Repo {
         return this.ref<Ref>('HEAD');
     }
 
-    writeHEADCommitData() {
-        var commit = this.head.commit;
-        if (!commit) return;
+    writeCommitData(ref: Ref, name: string) {
+        if (!ref) return;
 
-        var json = JSON.stringify(commit.data());
-        fse.outputFileSync(path.join(this.jerkPath, 'HEAD'), json);
+        var json = JSON.stringify(ref.data());
+        fse.outputFileSync(path.join(this.jerkPath, name), json);
     }
 
-    writeORIGHEADCommitData(commit: Commit) {
-        if (!commit) return;
-
-        var json = JSON.stringify(commit.data());
-        fse.outputFileSync(path.join(this.jerkPath, 'ORIG_HEAD'), json);
+    get merging(): MergeOf {
+        return this._merging;
+    }
+    setMerging(commit: string, branch: string) {
+        if (!commit) {
+            this._merging = null;
+        } else {
+            this._merging = new MergeOf(commit, this, branch);
+        }
+        this.saveConfig();
     }
 }
 
@@ -698,7 +745,11 @@ export function loadRefsFromObject(o: Object, repo: Repo): StringMap<Ref> {
         var data: string[] = v.value;
         var type = data[0];
         if (type === "Ref") {
-            res.put(key, new Ref(data[2], data[1], repo, parseInt(data[3])));
+            let ref = new Ref(data[2], data[1], repo, parseInt(data[3]));
+            res.put(key, ref);
+            if (key === 'HEAD') {
+                ref.on(onHEADMoved);
+            }
         } else if (type === "Branch") {
             res.put(key, new Branch(data[2], data[1], repo, parseInt(data[3])));
         } else if (type === "Tag") {
@@ -726,9 +777,16 @@ export function loadCommitsFromObject(o: Object, repo: Repo): StringMap<Commit> 
             contents.put(path, new TreeFile(path, v.value['time'], v.value['hash']));
         });
 
+        let mergeOfObj: string[] = JSON.parse(data[8]);
+        var mergeOf: MergeOf = null;
+        if (!!mergeOfObj) {
+            mergeOf = new MergeOf(mergeOfObj[1], repo, mergeOfObj[2]);
+        }
+
         var commit = new Commit(data[1], repo,
             data[5], data[2], data[3], data[4], parseInt(data[6]), contents,
-            data[8], JSON.parse(data[9]));
+            mergeOf, JSON.parse(data[9]));
+
         res.put(key, commit);
     });
     return res;

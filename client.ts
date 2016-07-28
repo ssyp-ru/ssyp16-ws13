@@ -1,17 +1,23 @@
 import * as logSymbols from 'log-symbols';
 import * as colors from 'colors/safe';
 import * as child_process from "child_process";
-import * as fs from "fs";
+import * as fs from "./fs";
+import * as nfs from "fs";
 import * as fse from 'fs-extra';
+import {FSFunctions} from './fsFunctions';
 import * as path from 'path';
 import * as Logger from './log';
+import * as Hulk from './hulk';
 import * as Common from './common';
 import * as Format from './format';
 import * as glob from 'glob';
 import * as Moment from 'moment';
+let createHash = require('sha.js');
+let istextorbinary = require('istextorbinary');
 
 module Client {
     let log = new Logger.Logger();
+    let fsf = new FSFunctions();
 
     class WorkingTreeStatus {
         modified: string[] = [];
@@ -37,6 +43,30 @@ module Client {
 
         get anyChanges(): boolean {
             return this.anyNewChanges || this.anyStagedChanges;
+        }
+
+        get allNewChanges(): string[] {
+            return this.added.concat(this.removed).concat(this.modified);
+        }
+
+        get allStagedChanges(): string[] {
+            return this.addedStaged.concat(this.removedStaged).concat(this.modifiedStaged);
+        }
+
+        get allChanges(): string[] {
+            return this.allNewChanges.concat(this.allStagedChanges);
+        }
+
+        get allModified(): string[] {
+            return this.modified.concat(this.modifiedStaged);
+        }
+
+        get allAdded(): string[] {
+            return this.added.concat(this.addedStaged);
+        }
+
+        get allRemoved(): string[] {
+            return this.removed.concat(this.removedStaged);
         }
 
         push(v: string, mode: number) {
@@ -84,14 +114,14 @@ module Client {
                     return;
                 }
 
-                try {
-                    var stat = fs.lstatSync(v);
-
-                    if (tf.time < stat.mtime.getTime()) {
-                        result.push(v, 0);
-                    }
-                } catch (e) {
+                let stat = fsf.lstat(v);
+                if (!stat) {
                     log.warn(`file "${v}" died in vain...`);
+                    return;
+                }
+
+                if (tf.time < stat.mtime.getTime()) {
+                    result.push(v, 0);
                 }
             });
             commit.contents.forEach(v => {
@@ -114,14 +144,14 @@ module Client {
 
     export function checkoutFile(repo: Common.Repo, commit: Common.Commit = repo.head.commit, path: string) {
         if (!commit) {
-            fs.unlinkSync(path);
+            nfs.unlinkSync(path);
             repo.unstage(path);
             return;
         }
 
         let tf = commit.file(path);
         if (!tf) {
-            fs.unlinkSync(path);
+            nfs.unlinkSync(path);
             repo.unstage(path);
         } else {
             return checkoutFileExtended(repo, commit, tf);
@@ -131,20 +161,16 @@ module Client {
     export function checkoutFileExtended(repo: Common.Repo, commit: Common.Commit = repo.head.commit, tf: Common.TreeFile) {
         let fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
 
-        var stat: fs.Stats;
-        try {
-            stat = fs.lstatSync(tf.path);
-            if (!!stat) {
-                if (tf.time === stat.mtime.getTime()) {
-                    return;
-                }
+        var stat = fsf.lstat(tf.path);
+        if (!!stat) {
+            if (tf.time === stat.mtime.getTime()) {
+                return;
             }
-        } catch (e) {
         }
 
         let dTime = new Date(tf.time);
         fse.outputFileSync(tf.path, fo.buffer());
-        fs.utimesSync(tf.path, dTime, dTime);
+        nfs.utimesSync(tf.path, dTime, dTime);
     }
 
     export function revertAllWorkingTreeChanges(repo: Common.Repo) {
@@ -154,11 +180,10 @@ module Client {
             return;
         }
 
-        res.modified
-            .concat(res.modifiedStaged)
+        res.allModified
             .forEach(v => {
                 if (!commit) {
-                    fs.unlinkSync(v);
+                    nfs.unlinkSync(v);
                     return;
                 }
 
@@ -166,19 +191,17 @@ module Client {
                 var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
 
                 fse.outputFileSync(v, fo.buffer());
-                fs.utimesSync(v, new Date(tf.time), new Date(tf.time));
+                nfs.utimesSync(v, new Date(tf.time), new Date(tf.time));
                 repo.unstage(v);
             });
 
-        res.added
-            .concat(res.addedStaged)
+        res.allAdded
             .forEach(v => {
-                fs.unlinkSync(v);
+                nfs.unlinkSync(v);
                 repo.unstage(v);
             });
 
-        res.removed
-            .concat(res.removedStaged)
+        res.allRemoved
             .forEach(v => {
                 if (!commit) {
                     log.error('unexpected file removal without HEAD commit');
@@ -188,7 +211,7 @@ module Client {
                 var tf = commit.file(v);
                 var fo = repo.fs.resolveObjectByHash(tf.hash).asFile();
                 fse.outputFileSync(v, fo.buffer());
-                fs.utimesSync(v, new Date(tf.time), new Date(tf.time));
+                nfs.utimesSync(v, new Date(tf.time), new Date(tf.time));
             });
     }
 
@@ -220,9 +243,7 @@ module Client {
         targetCommit: Common.Commit
     ) {
         if (targetCommit.id != repo.head.head) {
-            let oldHEADCommit = repo.head.commit;
-
-            repo.writeORIGHEADCommitData(oldHEADCommit);
+            repo.writeCommitData(repo.head, 'ORIG_HEAD');
             repo.currentBranch.move(targetCommit.id);
             repo.saveConfig();
         }
@@ -240,6 +261,207 @@ module Client {
 
             revertAllWorkingTreeChanges(repo);
         }
+    }
+
+    function commonRoot(repo: Common.Repo, a: Common.Commit, b: Common.Commit): {
+        root: Common.Commit;
+        aBranch: Common.Commit[];
+        bBranch: Common.Commit[];
+    } {
+        let aParents = new Common.StringMap<Common.Commit>()
+        let bParents = new Common.StringMap<Common.Commit>();
+        let aFlow: string[] = [];
+        let bFlow: string[] = [];
+        var parent = a;
+        while (!!parent) {
+            let id = parent.id;
+            aParents.put(id, parent);
+            aFlow.push(id);
+            parent = parent.parent;
+        }
+        parent = b;
+        while (!!parent) {
+            let id = parent.id;
+            bParents.put(id, parent);
+            bFlow.push(id);
+            if (aFlow.indexOf(id) >= 0) {
+                break;
+            }
+            parent = parent.parent;
+        }
+        if (!parent) return null;
+        bFlow.reverse();
+        let aBranch: Common.Commit[] = [];
+        let bBranch: Common.Commit[] = [];
+        for (var i = 0; i < aFlow.length; i++) {
+            var element = aFlow[i];
+            aBranch.push(aParents.get(element));
+            if (element === parent.id) break;
+        }
+        bFlow.forEach(v => bBranch.push(bParents.get(v)));
+        aBranch.reverse();
+
+        aBranch.shift();
+        bBranch.shift();
+
+        return {
+            root: parent,
+            aBranch: aBranch,
+            bBranch: bBranch
+        };
+    }
+
+    function generateBranchDiffs(repo: Common.Repo,
+        commits: Common.Commit[], diffs: Common.StringMap<Hulk.Diff>,
+        blobs: Common.StringMap<Common.TreeFile>): boolean {
+        var ok = true;
+        commits.forEach(c => {
+            if (!ok) return;
+            let parent = c.parent;
+
+            c.changed.forEach(f => {
+                if (!ok) return;
+
+                let file = c.file(f);
+                let hash = file.hash;
+                let parentFile = parent.file(f);
+                let parentHash = !!parentFile ? parentFile.hash : null;
+
+                let obj = repo.fs.resolveObjectByHash(hash).asFile();
+                let parentObj = !!parentHash ? repo.fs.resolveObjectByHash(parentHash).asFile() : null;
+                let buf = obj.buffer();
+                let parentBuf = !!parentObj ? parentObj.buffer() : null;
+
+                var result: boolean = istextorbinary.isTextSync(f, buf);
+
+                if (!result) {
+                    blobs.put(f, file);
+                    return;
+                }
+
+                var diff = Hulk.Diff.diff(parentBuf || new Buffer(''), buf);
+                let oldDiff = diffs.get(f);
+                if (!oldDiff) return diffs.put(f, diff);
+
+                let merged = Hulk.merge(oldDiff, diff);
+                if (!(merged instanceof Hulk.Diff)) {
+                    ok = false;
+                    return log.error('Subsequent commit merge failed!');
+                }
+                diffs.put(f, merged as Hulk.Diff);
+            });
+        });
+
+        return ok;
+    }
+
+    /*
+    1. Find common root
+    2. Diff both branches
+    3. Merge diffs
+    4. Checkout common root
+    5. Apply diff
+    6. Stage
+    7. If merge conflict => abort
+    7. Commit
+    */
+    /*
+    "merge",
+    "dev",
+    "* master <= dev"
+    */
+
+    export function merge(repo: Common.Repo, target: Common.Commit, message: string,
+        authorName: string = null, authorEMail: string = null): Common.Commit {
+        let head = repo.head.commit;
+
+        let root = commonRoot(repo, head, target);
+        // log.info(JSON.stringify(root));
+        if (!root) throw "Two branches do not have any common commits";
+
+        var ts: number = new Date().getTime();
+        var hash: string = createHash('sha256').update(message || ts, 'utf8').digest('hex');
+
+        let aDiffs = new Common.StringMap<Hulk.Diff>();
+        let bDiffs = new Common.StringMap<Hulk.Diff>();
+        let aBlobs = new Common.StringMap<Common.TreeFile>();
+        let bBlobs = new Common.StringMap<Common.TreeFile>();
+
+        if (!generateBranchDiffs(repo, root.aBranch, aDiffs, aBlobs)) throw "Failed to calculate base branch diff";
+        // log.info(JSON.stringify(aDiffs.data), JSON.stringify(aBlobs.data));
+        if (!generateBranchDiffs(repo, root.bBranch, bDiffs, bBlobs)) throw "Failed to calculate merging branch diff";
+        // log.info(JSON.stringify(bDiffs.data), JSON.stringify(bBlobs.data));
+
+        let failures = new Common.StringMap<string>();
+
+        bDiffs.iter().forEach(v => {
+            let aDiff = aDiffs.get(v.key);
+            if (!aDiff) return aDiffs.put(v.key, v.value);
+            let merged = Hulk.merge(aDiff, v.value);
+            if (!(merged instanceof Hulk.Diff)) {
+                log.error(`Merge[${v.key}] failed!`);
+                let conflict = merged as Hulk.MergeConflict[];
+                var s = "Merge Failure\n\n";
+                conflict.forEach(v => {
+                    s += `>>>>>>>>>>> LEFT\nLine: ${v.left.line}\n${v.left.type === Hulk.HunkOperation.Add ? '+' : '-'}: ${v.left.value}\n`;
+                    s += `===========\nLine: ${v.right.line}\n${v.right.type === Hulk.HunkOperation.Add ? '+' : '-'}: ${v.right.value}\n`;
+                    s += '<<<<<<<<<<< RIGHT\n\n';
+                });
+                failures.put(v.key, s);
+                return;
+            }
+            aDiffs.put(v.key, merged as Hulk.Diff);
+        });
+        bBlobs.iter().forEach(v => {
+            let aBlob = aBlobs.get(v.key);
+            if (!aBlob) return aBlobs.put(v.key, v.value);
+            if (v.value.hash != aBlob.hash) {
+                log.info(`Blob[${v.key}] merge failed!`);
+                let s = `Blob Merge Failure\n>>>>>>>>>>> LEFT\n${aBlob.hash}\n===========\n${v.value.hash}\n<<<<<<<<<<<  RIGHT\n\n`;
+                failures.put(v.key, s)
+                return aBlobs.put(v.key, v.value);
+            }
+        });
+
+        // log.info(JSON.stringify(failures.data));
+        // log.info(JSON.stringify(aDiffs.data));
+
+        Client.checkout(repo, root.root, repo.currentBranch);
+
+        aDiffs.iter().forEach(v => {
+            let diff = v.value;
+            var buf: Buffer;
+            if (nfs.existsSync(v.key)) {
+                buf = nfs.readFileSync(v.key);
+            } else {
+                buf = new Buffer('');
+            }
+            let newBuf = diff.apply(buf);
+            fse.outputFileSync(v.key, newBuf);
+        });
+        aBlobs.iter().forEach(v => {
+            let file = v.value;
+            let fso = repo.fs.resolveObjectByHash(file.hash).asFile();
+            fse.outputFileSync(v.key, fso.buffer());
+        });
+
+        let st = status(repo);
+
+        st.allNewChanges.forEach(v => repo.stage(v));
+
+        repo.setMerging(head.id, repo.currentBranchName);
+
+        failures.iter().forEach(v => fse.outputFileSync('MERGE_' + v.key + '.txt', v.value));
+
+        if (failures.iter().length > 0) {
+            return null;
+        }
+
+        let commit = repo.createCommit(head, message, authorName, authorEMail, false, null);
+
+        repo.setMerging(null, null);
+
+        return commit;
     }
 }
 export = Client;

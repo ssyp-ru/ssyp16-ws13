@@ -10,7 +10,7 @@ import * as Common from './common';
 import * as Format from './format';
 import * as Client from './client';
 import * as Logger from './log';
-let program = require('commander');
+import program = require('commander');
 import * as glob from 'glob';
 import * as Moment from 'moment';
 import Configstore = require('configstore');
@@ -116,7 +116,7 @@ module CLI {
 
         let repo = new Common.Repo(process.cwd());
         repo.saveConfig();
-        log.info(repo.name + ':', colors.yellow('' + repo.commits().length), 'commits');
+        log.info(repo.name + ':', colors.yellow('' + repo.commits.length), 'commits');
     }
 
     function cloneOnObjectsFetched() {
@@ -181,6 +181,9 @@ module CLI {
         var mod = 'not modified';
         if (res.anyChanges) mod = 'modified';
         if (res.anyStagedChanges) mod += ', staged';
+        if (!!repo.merging) {
+            mod = 'merging';
+        }
         var curCommit = repo.currentBranchName;
         if (!curCommit) {
             curCommit = 'HEAD #' + repo.head.head.substring(0, 7);
@@ -208,10 +211,7 @@ module CLI {
 
         if (options.all) {
             var res = Client.status(repo);
-            res.modified
-                .concat(res.added)
-                .concat(res.removed)
-                .forEach(v => repo.stage(v));
+            res.allNewChanges.forEach(v => repo.stage(v));
             return;
         }
 
@@ -355,6 +355,10 @@ module CLI {
             return;
         }
 
+        if (!!repo.merging) {
+            log.warn('In merging mode, latest commits not shown.');
+        }
+
         while (!!commit) {
             var nextCommit = commit.parent;
 
@@ -408,10 +412,7 @@ module CLI {
         }
     }
 
-    export function checkout(what: string, options: any) {
-        if (!!options.quiet) log.silence();
-        var repo = cwdRepo();
-
+    export function resolveWhat(repo: Common.Repo, what: string): { commit: Common.Commit; ref: Common.Ref } {
         var commit = repo.commit(what);
         var ref = repo.ref<Common.Ref>(what);
         if (!commit && !ref) {
@@ -420,14 +421,24 @@ module CLI {
         if (!commit && !!ref) {
             commit = ref.commit;
         }
-        if (!commit) {
+        return { commit: commit, ref: ref };
+    }
+
+    export function checkout(what: string, options: any) {
+        if (!!options.quiet) log.silence();
+        var repo = cwdRepo();
+
+        let res = resolveWhat(repo, what);
+        if (!res.commit) {
             log.error('Commit or branch to checkout not found!');
             return;
         }
 
         if (options.force) Client.revertAllWorkingTreeChanges(repo);
 
-        Client.checkout(repo, commit, (ref instanceof Common.Branch) ? ref : null);
+        repo.setMerging(null, null);
+
+        Client.checkout(repo, res.commit, (res.ref instanceof Common.Branch) ? res.ref : null);
 
         if (!repo.currentBranchName) {
             log.info("Detached HEAD");
@@ -707,7 +718,7 @@ module CLI {
             let data = fastForwardable(repo, cfg);
             if (!data) return;
 
-            let newCommits = repo.commits()
+            let newCommits = repo.commits
                 .map(x => (data.remoteCommits.indexOf(x.id) < 0) ? x : null)
                 .filter(x => !!x)
                 .map(x => x.data());
@@ -752,6 +763,34 @@ module CLI {
                 log.error('remote:', res);
             });
         });
+    }
+    export function merge(what: string, message: string, options: any) {
+        if (!!options.quiet) log.silence();
+        let repo = cwdRepo();
+
+        let res = resolveWhat(repo, what);
+
+        let authorName: string = conf.get('authorName');
+        let authorEMail: string = conf.get('authorEMail');
+        var noAuthor = !authorName || !authorEMail;
+        if (noAuthor) {
+            log.error('either author name or email is not specified!');
+            return;
+        }
+
+        if (!repo.currentBranchName) {
+            log.error('you can not merge in detached HEAD state. Create new branch.');
+            return;
+        }
+
+        let commit = Client.merge(repo, res.commit, message, authorName, authorEMail);
+
+        if (!!commit) {
+            log.success('Merge successful!');
+        } else {
+            log.error("Merge failures occured, see MERGE_*.txt files for details.\n" +
+                "Resolve conflicts, stage resolutions and commit to finish merge process.");
+        }
     }
 }
 
@@ -844,12 +883,20 @@ program
 program
     .command('pull')
     .description('Fetch and merge remote changes with local branches')
+    .option('-q, --quiet', quietDescription)
     .action(CLI.pull);
 
 program
     .command('push')
     .description('Upload local object and ref changes to remote repository')
+    .option('-q, --quiet', quietDescription)
     .action(CLI.push);
+
+program
+    .command('merge <branch> <message>')
+    .description('Join two development histories together and tie them forever to death')
+    .option('-q, --quiet', quietDescription)
+    .action(CLI.merge);
 
 try {
     program.parse(process.argv);
