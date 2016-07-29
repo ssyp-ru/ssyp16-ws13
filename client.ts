@@ -213,10 +213,13 @@ module Client {
                 fse.outputFileSync(v, fo.buffer());
                 nfs.utimesSync(v, new Date(tf.time), new Date(tf.time));
             });
+
+
     }
 
     export function checkout(repo: Common.Repo, commit: Common.Commit, branch?: Common.Branch) {
         let head = repo.head;
+        let oldCommit = head.commit;
         head.move(commit.id);
         if (!!branch) {
             repo.currentBranchName = branch.name;
@@ -231,6 +234,25 @@ module Client {
         });
 
         revertAllWorkingTreeChanges(repo);
+
+        var unique = (arr) => {
+            var m = new Map();
+            for (var el of arr)
+                m.set(el, true);
+            var result = [];
+            for (var k of m.keys())
+                result.push(k);
+            return result;
+        }
+
+        let uniqueOld = unique(oldCommit.contents.map(f => path.dirname(f.path)));
+        let uniqueNew = unique(commit.contents.map(f => path.dirname(f.path)));
+
+        uniqueOld.forEach(v => {
+            if (uniqueNew.indexOf(v) < 0) {
+                fse.deleteSync(v);
+            }
+        });
     }
     export function resetFirstMode(repo: Common.Repo,
         paths: string[], targetCommit: Common.Commit) {
@@ -326,23 +348,24 @@ module Client {
                 if (!ok) return;
 
                 let file = c.file(f);
-                let hash = file.hash;
+                let hash = !!file ? file.hash : null;
                 let parentFile = parent.file(f);
                 let parentHash = !!parentFile ? parentFile.hash : null;
 
-                let obj = repo.fs.resolveObjectByHash(hash).asFile();
+                let obj = !!hash ? repo.fs.resolveObjectByHash(hash).asFile() : null;
                 let parentObj = !!parentHash ? repo.fs.resolveObjectByHash(parentHash).asFile() : null;
-                let buf = obj.buffer();
+                let buf = !!obj ? obj.buffer() : null;
                 let parentBuf = !!parentObj ? parentObj.buffer() : null;
 
-                var result: boolean = istextorbinary.isTextSync(f, buf);
+                var result: boolean = !!buf ? istextorbinary.isTextSync(f, buf) :
+                    !!parentBuf ? istextorbinary.isTextSync(f, parentBuf) : null;
 
                 if (!result) {
                     blobs.put(f, file);
                     return;
                 }
 
-                var diff = Hulk.Diff.diff(parentBuf || new Buffer(''), buf);
+                var diff = Hulk.Diff.diff(parentBuf || new Buffer(''), buf || new Buffer(''));
                 let oldDiff = diffs.get(f);
                 if (!oldDiff) return diffs.put(f, diff);
 
@@ -434,6 +457,10 @@ module Client {
         });
         aBlobs.iter().forEach(v => {
             let file = v.value;
+            if (!file) {
+                fse.deleteSync(v.key);
+                return;
+            }
             let fso = repo.fs.resolveObjectByHash(file.hash).asFile();
             fse.outputFileSync(v.key, fso.buffer());
         });

@@ -108,6 +108,7 @@ module CLI {
             currentBranchName: config.defaultBranchName,
             refs: config.refs,
             commits: config.commits,
+            merging: null,
             staged: []
         };
 
@@ -115,6 +116,8 @@ module CLI {
         fse.outputFileSync(cfg, json);
 
         let repo = new Common.Repo(process.cwd());
+        repo.createRef('HEAD');
+        repo.head.move(repo.defaultBranch.head);
         repo.saveConfig();
         log.info(repo.name + ':', colors.yellow('' + repo.commits.length), 'commits');
     }
@@ -303,7 +306,7 @@ module CLI {
                     }
                 });
 
-                var repo = Common.cwdRepo();
+                let repo = Common.cwdRepo();
                 if (!!repo) {
                     var lc = conf.get('repo_' + repo.name);
                     if (!!lc) {
@@ -317,14 +320,19 @@ module CLI {
                 break;
             }
             case "set": {
+                let repo = cwdRepo();
                 if (args.length < 2) {
                     log.error('Not enough arguments for set operation.' +
                         'You must specify both key and value to set.');
                     return;
                 }
 
-                conf.set(args[0], args[1]);
-                log.log(args[0], '=', conf.get(args[0]));
+                var key = args[0];
+                if (key.startsWith('this.')) {
+                    key = key.replace('this.', 'repo_' + repo.name + '.');
+                }
+                conf.set(key, args[1]);
+                log.log(args[0], '=', conf.get(key));
                 break;
             }
             default: {
@@ -537,17 +545,19 @@ module CLI {
 
         let remote = parseRemoteAddress(url);
 
-        let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
-
-        let cp = child_process.spawn("rsync",
-            [`rsync://${remote.host}:${remote.port}/jerk/objects`, '--info=progress2',
-                '-E', '-hhh', '-r', '-u', '--delete-delay', '.jerk']);
-        cp.stdout.on('data', (stdout) => {
-            rsyncOutputProgressUpdate(stdout, bar);
-        });
-        let cpInterval = setInterval(() => bar.tick(0), 100);
-
         fetchConfig(url, (cfg) => {
+            if (!cfg) return;
+
+            let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
+
+            let cp = child_process.spawn("rsync",
+                [`rsync://${remote.host}:${remote.port}/jerk/objects`, '--info=progress2',
+                    '-E', '-hhh', '-r', '-u', '.jerk']);
+            cp.stdout.on('data', (stdout) => {
+                rsyncOutputProgressUpdate(stdout, bar);
+            });
+            let cpInterval = setInterval(() => bar.tick(0), 100);
+
             Common.iterateStringKeyObject<string[]>(cfg.refs).forEach(v => {
                 let ref = repo.ref(v.key);
                 let val = v.value;
@@ -588,7 +598,7 @@ module CLI {
             }
             refs.push(v.key);
             if (ref.head !== val[2]) changedRefs.push(v.key);
-            if (ref.time !== parseInt(val[3])) fastForwardable = false;
+            if (ref.time !== parseInt(val[3])) changedRefs.push(v.key);
         });
         if (!fastForwardable) {
             log.error('fast-forward not available, pull remote changes and try again.');
@@ -714,6 +724,7 @@ module CLI {
         }
 
         fetchConfig(url, (cfg) => {
+            if (!cfg) return;
             cfg = JSON.parse(cfg);
             let data = fastForwardable(repo, cfg);
             if (!data) return;
