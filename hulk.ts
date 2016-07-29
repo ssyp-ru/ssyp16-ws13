@@ -63,48 +63,24 @@ export class Diff {
         var lines = bufftext.split('\n');
         var newlines: string[] = [];
         for (var i = 0, j = 0, currHunk = this._hunks[j]; i < lines.length; i++) {
+            // console.log('>', i, j, JSON.stringify(currHunk), JSON.stringify(lines), JSON.stringify(newlines));
             if (i < currHunk.line) newlines.push(lines[i]);
             else {
-                switch (currHunk.type) {
-                    case HunkOperation.Add:
-                        newlines.push(currHunk.value);
-                        newlines.push(lines[i]);
-                        break;
-                    case HunkOperation.Remove:
-                        break;
+                while (i === currHunk.line) {
+                    switch (currHunk.type) {
+                        case HunkOperation.Add:
+                            newlines.push(currHunk.value);
+                            newlines.push(lines[i]);
+                            break;
+                        case HunkOperation.Remove:
+                            break;
+                    }
+                    currHunk = this._hunks[++j];
                 }
-                currHunk = this._hunks[++j];
             }
+            // console.log('<', i, j, JSON.stringify(currHunk), JSON.stringify(lines), JSON.stringify(newlines));
         }
         return new Buffer(newlines.join('\n'));
-        
-        /*var strToReturn = "";
-        var bufInStr = buff.toString("utf8");
-        var posInString = 0;
-        var posOfLine = -1;
-        var curLine = 0;
-        for (var i = 0; i < this._hunks.length; i++) {
-            while (curLine < this._hunks[i].line) {
-                posOfLine++;
-                if (bufInStr[posOfLine + 1] == "\n") {
-                    curLine++;
-                    posOfLine += 2;
-                }
-            }
-            for (var j = posInString; j < posOfLine; j++) {
-                strToReturn += bufInStr[j];
-            }
-            if (this._hunks[i].type == HunkOperation.Add) {
-                strToReturn += this._hunks[i].value + "\n";
-            } else {
-                posInString += this._hunks[i].value.length + 2;
-                curLine++;
-            }
-        }
-        for (i = posInString; i < bufInStr.length; i++) {
-            strToReturn += bufInStr[i];
-        }
-        return new Buffer(strToReturn, "utf8");*/
     }
 
     private _hunks: Hunk[];
@@ -113,9 +89,9 @@ export class Diff {
 
     conflicted: boolean = false;
 
-    constructor(hunks: Hunk[], conflicted?: boolean) { 
+    constructor(hunks: Hunk[], conflicted?: boolean) {
         this._hunks = hunks.sort((a, b) => a.line - b.line);
-        if (conflicted) this.conflicted = true; 
+        if (conflicted) this.conflicted = true;
     }
 
     static diff(leftBuffer: Buffer, rightBuffer: Buffer): Diff {
@@ -160,11 +136,11 @@ export function merge(left: Diff, right: Diff): Diff {
             hunks.push(rhunks[j++]);
         } else {
             var line = lhunks[i].line;
-            hunks.push(new Hunk(line, '<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<', HunkOperation.Add));
+            hunks.push(new Hunk(line, '<<<<<', HunkOperation.Add));
             hunks.push(lhunks[i++]);
-            hunks.push(new Hunk(line, '>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>', HunkOperation.Add));
+            hunks.push(new Hunk(line, '=====', HunkOperation.Add));
             hunks.push(rhunks[j++]);
-            hunks.push(new Hunk(line, '====================================', HunkOperation.Add));
+            hunks.push(new Hunk(line, '>>>>>', HunkOperation.Add));
             conflicted = true;
         }
     }

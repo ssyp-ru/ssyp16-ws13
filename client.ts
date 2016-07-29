@@ -112,11 +112,8 @@ module Client {
         return { commit: commit, ref: ref };
     }
 
-    export function init(path: string) {
-        var repo = new Common.Repo(path, true);
-        if (!repo) {
-            log.error("Repository initialization failed!");
-        }
+    export function init(path: string): Common.Repo {
+        return new Common.Repo(path, true);
     }
 
     export function status(repo: Common.Repo): WorkingTreeStatus {
@@ -316,7 +313,7 @@ module Client {
         }
     }
 
-    function commonRoot(repo: Common.Repo, a: Common.Commit, b: Common.Commit): {
+    export function commonRoot(repo: Common.Repo, a: Common.Commit, b: Common.Commit): {
         root: Common.Commit;
         aBranch: Common.Commit[];
         bBranch: Common.Commit[];
@@ -448,6 +445,7 @@ module Client {
             if (merged.conflicted) {
                 log.error(`Merge conflicts found in file [${v.key}]`);
                 conflicted = true;
+                return;
             }
             aDiffs.put(v.key, merged);
         });
@@ -474,6 +472,7 @@ module Client {
             } else {
                 buf = new Buffer('');
             }
+            // log.info(JSON.stringify(diff), buf.toString());
             let newBuf = diff.apply(buf);
             fse.outputFileSync(v.key, newBuf);
         });
