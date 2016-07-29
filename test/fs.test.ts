@@ -8,15 +8,17 @@ import * as Logger from '../log';
 let log = new Logger.Logger();
 var createHash = require('sha.js');
 var fsf = new FSFunctions.FSFunctions();
+var objdir: string;
+var fs: FS.IFileSystem;
 
 describe("File System", () => {
     it('creates working directory', () => {
         log.silence();
         fse.ensureDirSync('mocha-tests');
         process.chdir('mocha-tests');
+        objdir = path.join('.jerk', 'objects');
+        fs = FS.fs();
     });
-    let objdir = path.join('.jerk', 'objects');
-    let fs = FS.fs();
     describe("Class FSImplementation implements IFileSystem", () => {
         it(".create", () => {
             var bf1 = new Buffer("Hello");
