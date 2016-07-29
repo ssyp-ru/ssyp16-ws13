@@ -95,14 +95,12 @@ describe("Hulk", () => {
         });
 
         it("merge 2 equals diffs", () => {
-            var left = new Hulk.Diff(
-                new Array<Hulk.Hunk>(
-                    new Hulk.Hunk(1, 'some code', Hulk.HunkOperation.Add),
-                    new Hulk.Hunk(4, 'some redcocode', Hulk.HunkOperation.Add)));
-            var right = new Hulk.Diff(
-                new Array<Hulk.Hunk>(
-                    new Hulk.Hunk(1, 'some code', Hulk.HunkOperation.Add),
-                    new Hulk.Hunk(4, 'some redcocode', Hulk.HunkOperation.Add)));
+            var left = new Hulk.Diff([
+                new Hulk.Hunk(1, 'some code', Hulk.HunkOperation.Add),
+                new Hulk.Hunk(4, 'some redcocode', Hulk.HunkOperation.Add)]);
+            var right = new Hulk.Diff([
+                new Hulk.Hunk(1, 'some code', Hulk.HunkOperation.Add),
+                new Hulk.Hunk(4, 'some redcocode', Hulk.HunkOperation.Add)]);
             var result = Hulk.merge(right, left);
             assert.deepEqual(right, result);
         });
@@ -145,6 +143,6 @@ describe("Hulk", () => {
         var d1 = Hulk.Diff.diff(first, second);
         var d2 = Hulk.Diff.diff(first, third);
         var res = Hulk.merge(d1, d2);
-        assert.ok(res instanceof Hulk.Diff);
+        assert.ok(!res.conflicted, 'conflict found');
     });
 });

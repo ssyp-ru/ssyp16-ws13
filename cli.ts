@@ -2,7 +2,6 @@
 import * as colors from 'colors/safe';
 import * as child_process from "child_process";
 import * as http from "http";
-import * as net from 'net';
 import * as fs from "fs";
 import * as fse from 'fs-extra';
 import * as path from 'path';
@@ -29,16 +28,6 @@ let quietDescription = 'Be quiet, only print warnings and errors, any other outp
 module CLI {
     export let log = new Logger.Logger();
 
-    let rsyncPercentage = /\s+(\d+)%/;
-    function rsyncOutputProgressUpdate(stdout: any, bar: any) {
-        let s = stdout.toString().trim().split('\r').pop();
-        if (rsyncPercentage.test(s)) {
-            let perc = parseInt(rsyncPercentage.exec(s)[1]);
-            return bar.update(perc / 100);
-        }
-        return bar.tick(0);
-    }
-
     function cwdRepo(): Common.Repo {
         var repo = Common.cwdRepo();
         if (!repo) {
@@ -54,80 +43,15 @@ module CLI {
         Client.init(process.cwd());
     }
 
-    function parseRemoteAddress(url: string): { host: string, port: number } {
-        var parts = url.split(':');
-        var host = parts[0];
-        var port = 19246;
-        if (parts.length > 1) {
-            port = parseInt(parts[1]);
-        }
-        return { host: host, port: port };
-    }
-
-    export function fetchConfig(url: string, callback: Function) {
-        var cfg = '';
-        let remote = parseRemoteAddress(url);
-        let req = http.request(
-            {
-                host: remote.host,
-                port: remote.port + 2,
-                path: '/config'
-            },
-            (res) => {
-                if (res.statusCode !== 200) {
-                    callback(null);
-                    return;
-                }
-                res.setEncoding('utf8');
-                res
-                    .on('data', (chunk: string) => {
-                        cfg += chunk;
-                    })
-                    .on('end', () => {
-                        callback(cfg);
-                    });
-            })
-            .on('error', (e) => {
-                log.error(e);
-                callback(null);
-            });
-        req.end();
-    }
-
-    function cloneOnConfigFetched(cfg: string) {
-        var json: string = fs.readFileSync(cfg, 'utf8');
-
-        let config: {
-            defaultBranchName: string,
-            refs: Object,
-            commits: Object,
-        } = JSON.parse(json);
-
-        let nconfig = {
-            defaultBranchName: config.defaultBranchName,
-            currentBranchName: config.defaultBranchName,
-            refs: config.refs,
-            commits: config.commits,
-            merging: null,
-            staged: []
+    function progressBarCallback(): (val: number) => void {
+        let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
+        return (val: number) => {
+            if (val === -1) {
+                bar.tick(0);
+                return;
+            }
+            bar.update(val);
         };
-
-        var json = JSON.stringify(nconfig);
-        fse.outputFileSync(cfg, json);
-
-        let repo = new Common.Repo(process.cwd());
-        repo.createRef('HEAD');
-        repo.head.move(repo.defaultBranch.head);
-        repo.saveConfig();
-        log.info(repo.name + ':', colors.yellow('' + repo.commits.length), 'commits');
-    }
-
-    function cloneOnObjectsFetched() {
-        log.info('objects fetched successfully!');
-        let repo = new Common.Repo(process.cwd());
-        let commit = repo.head.commit;
-        if (!!commit) Client.checkout(repo, commit, repo.currentBranch);
-        log.success('repository cloned successfully!');
     }
 
     export function clone(url: string, options: any) {
@@ -136,44 +60,12 @@ module CLI {
             return log.error('You can not clone inside existing repository');
         }
 
-        let remote = parseRemoteAddress(url);
-        let req = http.get(
-            {
-                host: remote.host,
-                port: remote.port + 2,
-                path: '/config'
-            },
-            (res) => {
-                let cfg = path.join('.jerk', 'config');
-                fse.ensureFileSync(cfg);
-
-                let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
-                let cp = child_process.spawn("rsync",
-                    [`rsync://${remote.host}:${remote.port}/jerk/objects`, '--info=progress2',
-                        '-E', '-hhh', '-r', '.jerk']);
-                cp.stdout.on('data', (stdout) => {
-                    rsyncOutputProgressUpdate(stdout, bar);
-                });
-                let cpInterval = setInterval(() => bar.tick(0), 100);
-
-                res
-                    .on('data', (chunk: Uint8Array) => {
-                        let buf = new Buffer(chunk);
-                        fs.appendFileSync(cfg, buf);
-                    })
-                    .on('end', () => {
-                        cloneOnConfigFetched(cfg);
-
-                        cp.on('exit', () => {
-                            bar.tick(100);
-                            clearInterval(cpInterval);
-                            cloneOnObjectsFetched();
-                        });
-                    });
-            })
-            .on('error', (e) => {
-                log.error(e);
-            });
+        Client.clone(url, progressBarCallback(), () => {
+            let repo = new Common.Repo(process.cwd());
+            log.info(repo.name + ':', colors.yellow('' + repo.commits.length), 'commits');
+        }, () => {
+            log.success('repository cloned successfully!');
+        });
     }
 
     export function status(options: any) {
@@ -259,32 +151,10 @@ module CLI {
         let optionConfig: string = options.reeditMessage || options.reuseMessage;
         let amend = !!options.amend;
         var oldCommitData: string[] = null;
-        var basedOnSomeCommit = false;
 
         if (!!optionConfig) {
-            let lcOption = optionConfig.toLowerCase();
-            if (lcOption === "orig_head") {
-                oldCommitData = fse.readJsonSync(path.join(repo.root, '.jerk', 'ORIG_HEAD'));
-                basedOnSomeCommit = true;
-            } else if (lcOption === "head") {
-                oldCommitData = fse.readJsonSync(path.join(repo.root, '.jerk', 'HEAD'));
-                basedOnSomeCommit = true;
-            } else {
-                let branch = repo.ref<Common.Ref>(optionConfig);
-                if (!!branch) {
-                    let cm = repo.commit(branch.head);
-                    if (!!cm) {
-                        oldCommitData = cm.data();
-                        basedOnSomeCommit = true;
-                    }
-                } else {
-                    let cm = repo.commit(optionConfig);
-                    if (!!cm) {
-                        oldCommitData = cm.data();
-                        basedOnSomeCommit = true;
-                    }
-                }
-            }
+            let resolved = Client.resolveWhat(repo, optionConfig).commit;
+            if (!!resolved) oldCommitData = resolved.data();
         }
 
         var commit = repo.head.commit;
@@ -320,6 +190,27 @@ module CLI {
                 break;
             }
             case "set": {
+                if (args.length < 2) {
+                    log.error('Not enough arguments for set operation.' +
+                        'You must specify both key and value to set.');
+                    return;
+                }
+
+                var key = args[0];
+                let repo = Common.cwdRepo();
+                if (key.startsWith('this.')) {
+                    if (!repo) {
+                        log.error(`You use local repository referencing (${colors.italic('this.')})` +
+                            ` while outside of any repository directory. Aborting.`);
+                        return;
+                    }
+                    key = key.replace('this.', 'repo_' + repo.name + '.');
+                }
+                conf.set(key, args[1]);
+                log.log(args[0], '=', conf.get(key));
+                break;
+            }
+            case "delete": {
                 let repo = cwdRepo();
                 if (args.length < 2) {
                     log.error('Not enough arguments for set operation.' +
@@ -420,29 +311,22 @@ module CLI {
         }
     }
 
-    export function resolveWhat(repo: Common.Repo, what: string): { commit: Common.Commit; ref: Common.Ref } {
-        var commit = repo.commit(what);
-        var ref = repo.ref<Common.Ref>(what);
-        if (!commit && !ref) {
-            ref = repo.createRef(what, true);
-        }
-        if (!commit && !!ref) {
-            commit = ref.commit;
-        }
-        return { commit: commit, ref: ref };
-    }
-
     export function checkout(what: string, options: any) {
         if (!!options.quiet) log.silence();
         var repo = cwdRepo();
 
-        let res = resolveWhat(repo, what);
+        let res = Client.resolveWhat(repo, what);
         if (!res.commit) {
             log.error('Commit or branch to checkout not found!');
             return;
         }
 
-        if (options.force) Client.revertAllWorkingTreeChanges(repo);
+        if (options.force) {
+            Client.revertAllWorkingTreeChanges(repo);
+        } else if (!!repo.merging) {
+            log.error(`You are in merging mode, specify ${colors.bold('--force')} or finish and commit merging results.`)
+            return;
+        }
 
         repo.setMerging(null, null);
 
@@ -507,7 +391,7 @@ module CLI {
             }
         }
 
-        let givenCommit = paths.length > 0 ? resolveWhat(repo, paths[0]).commit : null;
+        let givenCommit = paths.length > 0 ? Client.resolveWhat(repo, paths[0]).commit : null;
         var targetCommit = givenCommit || repo.head.commit;
         if (!targetCommit) {
             log.error('no target commit found, working in an empty repository?');
@@ -543,167 +427,27 @@ module CLI {
             return;
         }
 
-        let remote = parseRemoteAddress(url);
-
-        fetchConfig(url, (cfg) => {
-            if (!cfg) return;
-
-            let bar = new ProgressBar('  remote [:bar] :percent :etas', { total: 100, clear: true });
-
-            let cp = child_process.spawn("rsync",
-                [`rsync://${remote.host}:${remote.port}/jerk/objects`, '--info=progress2',
-                    '-E', '-hhh', '-r', '-u', '.jerk']);
-            cp.stdout.on('data', (stdout) => {
-                rsyncOutputProgressUpdate(stdout, bar);
-            });
-            let cpInterval = setInterval(() => bar.tick(0), 100);
-
-            Common.iterateStringKeyObject<string[]>(cfg.refs).forEach(v => {
-                let ref = repo.ref(v.key);
-                let val = v.value;
-                if (ref) {
-                    ref.name = val[1];
-                    ref.head = val[2];
-                    ref.time = parseInt(val[3]);
-                } else {
-                    repo.addRef(new Common.Ref(val[2], val[1], repo, parseInt(val[3])));
-                }
-            });
-
-            cp.on('exit', (code: number, signal: string) => {
-                bar.tick(100);
-                clearInterval(cpInterval);
-                log.success('pull finished successfully');
-            });
-        });
-    }
-
-    function fastForwardable(repo: Common.Repo, cfg: any): {
-        remoteRefs: string[];
-        changedRefs: string[];
-        remoteCommits: string[]
-    } {
-        var fastForwardable = true;
-        let refs = [];
-        let changedRefs = [];
-        let commits = [];
-        Common.iterateStringKeyObject<string[]>(cfg.refs).forEach(v => {
-            if (!fastForwardable) return;
-            if (v.key === 'HEAD') return;
-            let ref = repo.ref(v.key);
-            let val = v.value;
-            if (!ref) {
-                fastForwardable = false;
-                return;
-            }
-            refs.push(v.key);
-            if (ref.head !== val[2]) changedRefs.push(v.key);
-            if (ref.time !== parseInt(val[3])) changedRefs.push(v.key);
-        });
-        if (!fastForwardable) {
-            log.error('fast-forward not available, pull remote changes and try again.');
-            return null;
+        if (!repo.currentBranchName) {
+            log.error(`you can not pull in detached HEAD state. Create new branch or use ${colors.bold('jerk fetch')}.`);
+            return;
         }
-        Common.iterateStringKeyObject<string[]>(cfg.commits).forEach(v => {
-            if (!fastForwardable) return;
-            let commit = repo.commit(v.key);
-            let val = v.value;
-            if (!commit) {
-                fastForwardable = false;
-                return;
-            }
-            commits.push(v.key);
-            // ["Commit", this.id, this.message, this.authorName, this.authorEMail,
-            // this.parentId, this.time.toString(), JSON.stringify(this._contents),
-            // this._mergeOf, JSON.stringify(this.changed)]
-            if (commit.id !== val[1]) fastForwardable = false;
-            if (commit.message !== val[2]) fastForwardable = false;
-            if (commit.authorName !== val[3]) fastForwardable = false;
-            if (commit.authorEMail !== val[4]) fastForwardable = false;
-            if (commit.parentId !== val[5]) fastForwardable = false;
-            if (commit.time !== parseInt(val[6])) fastForwardable = false;
-            let data = commit.data();
-            if (data[7] !== val[7]) fastForwardable = false;
-            if (data[8] !== val[8]) fastForwardable = false;
-            if (data[9] !== val[9]) fastForwardable = false;
-        });
-        if (!fastForwardable) {
-            log.error('fast-forward not available, pull remote changes and try again.');
-            return null;
-        }
-        return { remoteRefs: refs, changedRefs: changedRefs, remoteCommits: commits };
-    }
 
-    export function pushJSON(remote: { host: string; port: number }, json: string, callback: Function) {
-        var cfg = '';
-        let req = http.request(
-            {
-                host: remote.host,
-                port: remote.port + 2,
-                path: '/push',
-                method: 'POST'
-            },
-            (res) => {
-                if (res.statusCode !== 200) {
-                    callback(null);
+        Client.fetch(repo, url, progressBarCallback(), (success) => {
+            if (success) {
+                let authorName: string = conf.get('authorName');
+                let authorEMail: string = conf.get('authorEMail');
+                var noAuthor = !authorName || !authorEMail;
+                if (noAuthor) {
+                    log.error('either author name or email is not specified!');
                     return;
                 }
-                res.setEncoding('utf8');
-                res
-                    .on('data', (chunk: string) => {
-                        cfg += chunk;
-                    })
-                    .on('end', () => {
-                        callback(cfg);
-                    });
-            })
-            .on('error', (e) => {
-                log.error(e);
-                callback(null);
-            });
-        req.write(json);
-        req.end();
-    }
-
-    function uploadObjectsRsync(remote: { host: string; port: number }, callback: Function) {
-        let bar = new ProgressBar('  sync [:bar] :percent :etas', { total: 100, clear: true });
-        let cp = child_process.spawn("rsync",
-            [path.join('.jerk', 'objects'), '--info=progress2', '-E', '-hhh',
-                '-r', '-u', '--delete-delay', `rsync://${remote.host}:${remote.port}/jerk`]);
-        cp.stdout.on('data', (stdout) => {
-            rsyncOutputProgressUpdate(stdout, bar);
+                let resolved = Client.resolveWhat(repo, 'FETCH_HEAD');
+                Client.merge(repo, resolved.commit, 'Remote pull merging commit', authorName, authorEMail);
+                log.success('pull finished successfully');
+            } else {
+                log.error('fetch failed');
+            }
         });
-        let cpInterval = setInterval(() => bar.tick(0), 100);
-
-        cp.on('exit', (code: number, signal: string) => {
-            bar.tick(100);
-            clearInterval(cpInterval);
-            if (code === 0) return callback(true);
-            return callback(false);
-        });
-    }
-
-    function uploadObjectsHTTP(remote: { host: string; port: number }, callback: Function) {
-        log.error(`HTTP upload mode not implemented! Use ${colors.italic('rsync')} mode.`);
-        /*
-        let client = net.createConnection({ host: remote.host, port: remote.port + 4 }, () => {
-            log.success('connected to remote...');
-            //client.write();
-        });
-        client.on('data', (data) => {
-            console.log(data.toString());
-            client.end();
-        });
-        client.on('end', () => {
-            log.success('disconnected from remote');
-        });
-        */
-    }
-
-    function uploadObjects(remote: { host: string; port: number }, mode: string, callback: Function) {
-        if (mode === 'rsync') return uploadObjectsRsync(remote, callback);
-        if (mode === 'http') return uploadObjectsHTTP(remote, callback);
-        throw "Unknown mode type";
     }
 
     export function push(options: any) {
@@ -723,63 +467,32 @@ module CLI {
             return;
         }
 
-        fetchConfig(url, (cfg) => {
-            if (!cfg) return;
-            cfg = JSON.parse(cfg);
-            let data = fastForwardable(repo, cfg);
-            if (!data) return;
-
-            let newCommits = repo.commits
-                .map(x => (data.remoteCommits.indexOf(x.id) < 0) ? x : null)
-                .filter(x => !!x)
-                .map(x => x.data());
-            let newRefs = repo.refs()
-                .map(x => (data.remoteRefs.indexOf(x.name) < 0 && x.name !== 'HEAD') ? x : null)
-                .filter(x => !!x)
-                .map(x => x.data());
-            let changedRefs = data.changedRefs
-                .map(x => repo.ref(x).data());
-
-            if (newCommits.length === 0 && newRefs.length === 0 && changedRefs.length === 0) {
-                return log.success('up-to-date!');
+        Client.push(repo, url, mode, () => {
+            log.error('cannot push to remote server, pull remote changes and try again.');
+        }, progressBarCallback(), (res: Client.PushSuccessState) => {
+            switch (res) {
+                case Client.PushSuccessState.UP_TO_DATE:
+                    log.success('up-to-date!');
+                    break;
+                case Client.PushSuccessState.CONNECTION_FAILED:
+                    log.error('connection to remote failed!');
+                    break;
+                case Client.PushSuccessState.OK:
+                    log.success('push finished successfully!');
+                    break;
+                case Client.PushSuccessState.FAIL:
+                default:
+                    log.error('error occured while pushing to remote!');
+                    break;
             }
-
-            let refs = {};
-            let commits = {};
-            newRefs.concat(changedRefs).forEach(x => refs[x[1]] = x);
-            newCommits.forEach(x => commits[x[1]] = x);
-
-            let json = {
-                refs: refs,
-                commits: commits,
-                revision: cfg.revision
-            }
-
-            let remote = parseRemoteAddress(url);
-
-            let jsonPush = JSON.stringify(json);
-
-            pushJSON(remote, jsonPush, (res) => {
-                if (!res) {
-                    log.error('push connection failed');
-                    return;
-                }
-                if (res === 'OK') {
-                    uploadObjects(remote, mode, (res) => {
-                        if (res) return log.success('push finished successfully!');
-                        return log.error('uploading objects failed');
-                    });
-                    return;
-                }
-                log.error('remote:', res);
-            });
         });
     }
+
     export function merge(what: string, message: string, options: any) {
         if (!!options.quiet) log.silence();
         let repo = cwdRepo();
 
-        let res = resolveWhat(repo, what);
+        let res = Client.resolveWhat(repo, what);
 
         let authorName: string = conf.get('authorName');
         let authorEMail: string = conf.get('authorEMail');
@@ -802,6 +515,25 @@ module CLI {
             log.error("Merge failures occured, see MERGE_*.txt files for details.\n" +
                 "Resolve conflicts, stage resolutions and commit to finish merge process.");
         }
+    }
+
+    export function fetch(options: any) {
+        if (!!options.quiet) log.silence();
+        let repo = cwdRepo();
+
+        let url = conf.get('repo_' + repo.name + '.url');
+        if (!url) {
+            log.error(`remote address not specified. Use ${colors.bold('jerk config set this.url <url>')} to set remote address to ${colors.italic('<url>')}`);
+            return;
+        }
+
+        Client.fetch(repo, url, progressBarCallback(), (success) => {
+            if (success) {
+                log.success('fetch finished successfully');
+            } else {
+                log.error('fetch failed');
+            }
+        });
     }
 }
 
@@ -908,6 +640,12 @@ program
     .description('Join two development histories together and tie them forever to death')
     .option('-q, --quiet', quietDescription)
     .action(CLI.merge);
+
+program
+    .command('fetch')
+    .description('Download remote objects and refs from remote repository')
+    .option('-q, --quiet', quietDescription)
+    .action(CLI.fetch);
 
 try {
     program.parse(process.argv);
